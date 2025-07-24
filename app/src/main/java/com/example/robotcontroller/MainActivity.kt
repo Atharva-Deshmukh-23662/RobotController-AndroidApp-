@@ -115,9 +115,19 @@ class MainActivity : AppCompatActivity() {
 
 
     private fun sendCommand(command: String) {
-        bluetoothSocket?.outputStream?.write(command.toByteArray())
-            ?: Toast.makeText(this, "Not connected", Toast.LENGTH_SHORT).show()
+        try {
+            val socket = bluetoothSocket
+            if (socket != null && socket.isConnected) {
+                socket.outputStream.write(command.toByteArray())
+            } else {
+                Toast.makeText(this, "Not connected", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: IOException) {
+            e.printStackTrace()
+            Toast.makeText(this, "Failed to send command", Toast.LENGTH_SHORT).show()
+        }
     }
+
 
     override fun onDestroy() {
         bluetoothSocket?.close()
