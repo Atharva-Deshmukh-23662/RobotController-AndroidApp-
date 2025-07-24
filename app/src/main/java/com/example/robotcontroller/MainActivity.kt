@@ -1,28 +1,43 @@
 package com.example.robotcontroller
 
 import android.Manifest
+import android.app.Activity
 import android.app.AlertDialog
 import android.bluetooth.*
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.speech.RecognizerIntent
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
 import com.example.robotcontroller.databinding.ActivityMainBinding
 import java.io.IOException
 import java.util.*
-import kotlin.collections.toList
-import android.os.Build
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
     private var bluetoothSocket: BluetoothSocket? = null
-
     private val uuid: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB") // SPP UUID
 
+    // ✅ For speech recognition
+    private val voiceLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            val matches = result.data!!.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            val spokenText = matches?.get(0) ?: ""
+            Toast.makeText(this, "Heard: $spokenText", Toast.LENGTH_LONG).show()
+
+            // 🔜 NEXT: Send to AI and interpret result
+        }
+    }
+
+    // ✅ Permission launcher for Bluetooth
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { perms ->
@@ -38,12 +53,34 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        binding.btnConnect.setOnClickListener { requestPermissionsAndConnect() }
+        // ✅ Request RECORD_AUDIO permission if not already granted
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), 1)
+        }
 
+        // ✅ Button click listeners
+        binding.btnConnect.setOnClickListener { requestPermissionsAndConnect() }
         binding.btnForward.setOnClickListener { sendCommand("F") }
         binding.btnBack.setOnClickListener { sendCommand("B") }
         binding.btnLeft.setOnClickListener { sendCommand("L") }
         binding.btnRight.setOnClickListener { sendCommand("R") }
+
+        // 🎙️ Speak button for voice input
+        binding.btnSpeak.setOnClickListener {
+            startVoiceRecognition()
+        }
+    }
+
+    // ✅ Start voice input using built-in recognizer
+    private fun startVoiceRecognition() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak now...")
+        }
+        voiceLauncher.launch(intent)
     }
 
     private fun requestPermissionsAndConnect() {
@@ -63,7 +100,6 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // ✅ Permission check before accessing bondedDevices
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
             checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
         ) {
@@ -85,14 +121,9 @@ class MainActivity : AppCompatActivity() {
     private fun connectToDevice(device: BluetoothDevice) {
         Thread {
             try {
-                // ✅ Check permission before calling protected APIs
                 if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
                     runOnUiThread {
-                        Toast.makeText(
-                            this,
-                            "Bluetooth connect permission denied",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                        Toast.makeText(this, "Bluetooth connect permission denied", Toast.LENGTH_SHORT).show()
                     }
                     return@Thread
                 }
@@ -113,7 +144,6 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-
     private fun sendCommand(command: String) {
         try {
             val socket = bluetoothSocket
@@ -127,7 +157,6 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Failed to send command", Toast.LENGTH_SHORT).show()
         }
     }
-
 
     override fun onDestroy() {
         bluetoothSocket?.close()
