@@ -49,6 +49,9 @@ android {
 }
 
 dependencies {
+    // Gemini client
+    implementation("com.google.ai.client.generativeai:generativeai:0.9.0")
+    // Test dependencies
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.12.0")
@@ -69,7 +72,5 @@ dependencies {
 
     //auto wake words picovoice
     implementation("ai.picovoice:porcupine-android:3.0.3")
-
-    // Gemini client
-    implementation("com.google.ai.client:generativeai:0.9.0")
 }
+

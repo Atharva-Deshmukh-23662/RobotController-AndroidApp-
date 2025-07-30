@@ -17,6 +17,9 @@ import com.example.robotcontroller.databinding.ActivityMainBinding
 import java.io.IOException
 import java.util.*
 import com.example.robotcontroller.wakeword.WakeWordManager // ✅ Import your WakeWordManager
+import com.google.ai.client.generativeai.GenerativeModel
+import kotlinx.coroutines.*
+
 
 class MainActivity : AppCompatActivity() {
 
@@ -35,6 +38,7 @@ class MainActivity : AppCompatActivity() {
             val matches = result.data!!.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
             val spokenText = matches?.get(0)?.lowercase(Locale.getDefault()) ?: ""
             Toast.makeText(this, "Heard: $spokenText", Toast.LENGTH_LONG).show()
+            sendToGemini(spokenText)
 
             when (spokenText) {
                 "start" -> sendCommand("CSL-WU-#")
@@ -197,5 +201,41 @@ class MainActivity : AppCompatActivity() {
         } else {
             Toast.makeText(this, "Permissions denied", Toast.LENGTH_SHORT).show()
         }
+    }
+
+
+    //gemini services
+    private val geminiModel = GenerativeModel(
+        modelName = "gemini-1.5-flash", // Use current supported model
+        apiKey = "AIzaSyDDWp7kM3kLNZehIXpWonZ92IGxa1_I2_E"
+    )
+
+    private fun sendToGemini(recognizedText: String) {
+        // Show loading state
+        showGeminiResponse("Processing your request...")
+
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val response = geminiModel.generateContent(recognizedText)
+                val aiResponse = response.text ?: "No response generated"
+
+                runOnUiThread {
+                    showGeminiResponse("AI Response: $aiResponse")
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    showGeminiResponse("Error: ${e.message}")
+                }
+            }
+        }
+    }
+
+    private fun showGeminiResponse(message: String) {
+        // You can display this in a TextView, Dialog, or Toast
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        binding.geminiResponseText.text = message
+
+        // Or if you have a TextView in your layout:
+        // binding.responseTextView.text = message
     }
 }

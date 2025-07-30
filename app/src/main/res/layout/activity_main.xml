@@ -6,28 +6,35 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <Button android:id="@+id/btnConnect"
-        android:text="Connect to HC-05"
+    <Button
+        android:id="@+id/btnConnect"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content" />
+        android:layout_height="wrap_content"
+        android:text="Connect to HC-05"
+        android:layout_marginTop="15dp"/>
 
     <LinearLayout
         android:orientation="horizontal"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="20dp">
+        android:layout_marginTop="20dp"
+        >
 
         <Button android:id="@+id/btnForward"
             android:text="Forward"
             android:layout_width="0dp"
             android:layout_weight="1"
-            android:layout_height="wrap_content" />
+            android:background="@drawable/rounded_background"
+            android:layout_height="wrap_content"
+            android:layout_margin="5dp"/>
 
         <Button android:id="@+id/btnBack"
             android:text="Back"
             android:layout_width="0dp"
             android:layout_weight="1"
-            android:layout_height="wrap_content" />
+            android:background="@drawable/rounded_background"
+            android:layout_height="wrap_content"
+            android:layout_margin="5dp"/>
     </LinearLayout>
 
     <LinearLayout
@@ -40,13 +47,17 @@
             android:text="Left"
             android:layout_width="0dp"
             android:layout_weight="1"
-            android:layout_height="wrap_content" />
+            android:background="@drawable/rounded_background"
+            android:layout_height="wrap_content"
+            android:layout_margin="5dp"/>
 
         <Button android:id="@+id/btnRight"
             android:text="Right"
             android:layout_width="0dp"
             android:layout_weight="1"
-            android:layout_height="wrap_content" />
+            android:background="@drawable/rounded_background"
+            android:layout_height="wrap_content"
+            android:layout_margin="5dp"/>
     </LinearLayout>
 
     <Button
@@ -55,6 +66,19 @@
         android:layout_height="wrap_content"
         android:layout_gravity="center"
         android:layout_marginTop="16dp"
+        android:background="@drawable/rounded_background"
         android:text="🎙️ Speak" />
+    <TextView
+        android:id="@+id/geminiResponseText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:padding="12dp"
+        android:background="@drawable/rounded_background"
+        android:text="AI responses will appear here..."
+        android:textSize="14sp"
+        android:maxLines="10"
+        android:scrollbars="vertical" />
+
 
 </LinearLayout>
