@@ -16,6 +16,7 @@ import androidx.core.app.ActivityCompat
 import com.example.robotcontroller.databinding.ActivityMainBinding
 import java.io.IOException
 import java.util.*
+import com.example.robotcontroller.wakeword.WakeWordManager // ✅ Import your WakeWordManager
 
 class MainActivity : AppCompatActivity() {
 
@@ -23,6 +24,8 @@ class MainActivity : AppCompatActivity() {
     private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
     private var bluetoothSocket: BluetoothSocket? = null
     private val uuid: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB") // SPP UUID
+    private lateinit var wakeWordManager: WakeWordManager
+
 
     // ✅ For speech recognition
     private val voiceLauncher = registerForActivityResult(
@@ -30,10 +33,18 @@ class MainActivity : AppCompatActivity() {
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
             val matches = result.data!!.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-            val spokenText = matches?.get(0) ?: ""
+            val spokenText = matches?.get(0)?.lowercase(Locale.getDefault()) ?: ""
             Toast.makeText(this, "Heard: $spokenText", Toast.LENGTH_LONG).show()
 
-            // 🔜 NEXT: Send to AI and interpret result
+            when (spokenText) {
+                "start" -> sendCommand("CSL-WU-#")
+                "forward" -> sendCommand("CSL-WU-#")
+                "back" -> sendCommand("B")
+                "left" -> sendCommand("L")
+                "right" -> sendCommand("R")
+                else -> Toast.makeText(this, "Sorry, I can only execute movement commands.", Toast.LENGTH_SHORT).show()
+            }
+
         }
     }
 
@@ -52,6 +63,14 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        wakeWordManager = WakeWordManager(this) {
+            runOnUiThread {
+                Toast.makeText(this, "Wake word detected!", Toast.LENGTH_SHORT).show()
+                startVoiceRecognition()
+            }
+        }
+        wakeWordManager.initialize("YEWpY2uu/ejh97A66zakeL/RP8q3/su52qIU8Xy/BDdQsBgxnw/YkQ==")
+        wakeWordManager.start()
 
         // ✅ Request RECORD_AUDIO permission if not already granted
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
@@ -62,7 +81,7 @@ class MainActivity : AppCompatActivity() {
 
         // ✅ Button click listeners
         binding.btnConnect.setOnClickListener { requestPermissionsAndConnect() }
-        binding.btnForward.setOnClickListener { sendCommand("F") }
+        binding.btnForward.setOnClickListener { sendCommand("CSL-WU-#") }
         binding.btnBack.setOnClickListener { sendCommand("B") }
         binding.btnLeft.setOnClickListener { sendCommand("L") }
         binding.btnRight.setOnClickListener { sendCommand("R") }
@@ -148,7 +167,8 @@ class MainActivity : AppCompatActivity() {
         try {
             val socket = bluetoothSocket
             if (socket != null && socket.isConnected) {
-                socket.outputStream.write(command.toByteArray())
+                socket.outputStream.write(command.toByteArray()) // send full string
+                Toast.makeText(this, "Sent: $command", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(this, "Not connected", Toast.LENGTH_SHORT).show()
             }
@@ -161,6 +181,9 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         bluetoothSocket?.close()
         super.onDestroy()
+        wakeWordManager.stop()
+        wakeWordManager.release()
+
     }
 
     override fun onRequestPermissionsResult(
