@@ -19,6 +19,9 @@ import java.util.*
 import com.example.robotcontroller.wakeword.WakeWordManager // ✅ Import your WakeWordManager
 import com.google.ai.client.generativeai.GenerativeModel
 import kotlinx.coroutines.*
+import com.google.ai.client.generativeai.*
+import com.google.ai.client.generativeai.type.Content
+import com.google.ai.client.generativeai.type.TextPart
 
 
 class MainActivity : AppCompatActivity() {
@@ -207,7 +210,19 @@ class MainActivity : AppCompatActivity() {
     //gemini services
     private val geminiModel = GenerativeModel(
         modelName = "gemini-1.5-flash", // Use current supported model
-        apiKey = "AIzaSyDDWp7kM3kLNZehIXpWonZ92IGxa1_I2_E"
+        apiKey = "AIzaSyDDWp7kM3kLNZehIXpWonZ92IGxa1_I2_E",
+        systemInstruction = Content(
+            role  = "system",
+            parts = listOf(
+                TextPart(
+                    text = """
+                    You are Robo, an AI robot-controller assistant.
+                    • Answer concisely unless the user asks for detail.
+                    • You can handle any general question, but stay in character as Robo.
+                """.trimIndent()
+                )
+            )
+        )
     )
 
     private fun sendToGemini(recognizedText: String) {
