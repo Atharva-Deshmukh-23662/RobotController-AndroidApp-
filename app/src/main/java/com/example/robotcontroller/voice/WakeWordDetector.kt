@@ -1,8 +1,25 @@
-package com.example.robotcontroller.wakeword
+package com.example.robotcontroller.voice
 
+import ai.picovoice.porcupine.PorcupineManager
+import ai.picovoice.porcupine.PorcupineManagerCallback
 import android.content.Context
 import android.util.Log
-import ai.picovoice.porcupine.*
+
+class WakeWordDetector(
+    private val context: Context,
+    private val apiKey: String,
+    private val onWake: () -> Unit
+) {
+    private val manager = WakeWordManager(context) { onWake() }
+
+    fun initialize() {
+        manager.initialize(apiKey)
+    }
+
+    fun start() = manager.start()
+    fun stop() = manager.stop()
+    fun release() = manager.release()
+}
 
 class WakeWordManager(
     private val context: Context,
