@@ -6,251 +6,77 @@ import android.app.AlertDialog
 import android.bluetooth.*
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.icu.text.DisplayContext.LENGTH_SHORT
 import android.os.Build
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.widget.Toast
+import android.widget.Toast.LENGTH_LONG
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.lifecycle.lifecycleScope
 import com.example.robotcontroller.databinding.ActivityMainBinding
 import java.io.IOException
 import java.util.*
-import com.example.robotcontroller.wakeword.WakeWordManager // ✅ Import your WakeWordManager
 import com.google.ai.client.generativeai.GenerativeModel
 import kotlinx.coroutines.*
 import com.google.ai.client.generativeai.*
 import com.google.ai.client.generativeai.type.Content
 import com.google.ai.client.generativeai.type.TextPart
+import com.example.robotcontroller.ai.AiManager
+import com.example.robotcontroller.bluetooth.BluetoothManager
+import com.example.robotcontroller.voice.WakeWordDetector
+import com.example.robotcontroller.voice.SpeechRecognizerManager
 
 
 class MainActivity : AppCompatActivity() {
-
     private lateinit var binding: ActivityMainBinding
-    private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
-    private var bluetoothSocket: BluetoothSocket? = null
-    private val uuid: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB") // SPP UUID
-    private lateinit var wakeWordManager: WakeWordManager
+    private lateinit var btMgr: BluetoothManager
+    private lateinit var wake: WakeWordDetector
+    private lateinit var speech: SpeechRecognizerManager
+    private lateinit var ai: AiManager
 
-
-    // ✅ For speech recognition
-    private val voiceLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
-            val matches = result.data!!.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-            val spokenText = matches?.get(0)?.lowercase(Locale.getDefault()) ?: ""
-            Toast.makeText(this, "Heard: $spokenText", Toast.LENGTH_LONG).show()
-            sendToGemini(spokenText)
-
-            when (spokenText) {
-                "start" -> sendCommand("CSL-WU-#")
-                "forward" -> sendCommand("CSL-WU-#")
-                "back" -> sendCommand("B")
-                "left" -> sendCommand("L")
-                "right" -> sendCommand("R")
-                else -> Toast.makeText(this, "Sorry, I can only execute movement commands.", Toast.LENGTH_SHORT).show()
-            }
-
-        }
-    }
-
-    // ✅ Permission launcher for Bluetooth
-    private val permissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { perms ->
-        if (perms.values.all { it }) {
-            showDevicePicker()
-        } else {
-            Toast.makeText(this, "Bluetooth permissions required", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    override fun onCreate(saved: Bundle?) {
+        super.onCreate(saved)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        wakeWordManager = WakeWordManager(this) {
-            runOnUiThread {
-                Toast.makeText(this, "Wake word detected!", Toast.LENGTH_SHORT).show()
-                startVoiceRecognition()
-            }
-        }
-        wakeWordManager.initialize("YEWpY2uu/ejh97A66zakeL/RP8q3/su52qIU8Xy/BDdQsBgxnw/YkQ==")
-        wakeWordManager.start()
 
-        // ✅ Request RECORD_AUDIO permission if not already granted
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-            != PackageManager.PERMISSION_GRANTED
-        ) {
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), 1)
-        }
+        // Instantiate managers
+        val YOUR_WAKEWORD_KEY = "YEWpY2uu/ejh97A66zakeL/RP8q3/su52qIU8Xy/BDdQsBgxnw/YkQ=="
+        val YOUR_API_KEY= "Iz**aSyDDWp7kM3kLNZehIXpWonZ92IGxa1_I2_E"
+        btMgr = BluetoothManager(this) { /* handle FPGA messages if needed */ }
+        wake = WakeWordDetector(this, YOUR_WAKEWORD_KEY) { onWake() }
+        speech = SpeechRecognizerManager(this) { onSpeech(it) }
 
-        // ✅ Button click listeners
-        binding.btnConnect.setOnClickListener { requestPermissionsAndConnect() }
-        binding.btnForward.setOnClickListener { sendCommand("CSL-WU-#") }
-        binding.btnBack.setOnClickListener { sendCommand("B") }
-        binding.btnLeft.setOnClickListener { sendCommand("L") }
-        binding.btnRight.setOnClickListener { sendCommand("R") }
+        ai = AiManager(this, YOUR_API_KEY)
 
-        // 🎙️ Speak button for voice input
-        binding.btnSpeak.setOnClickListener {
-            startVoiceRecognition()
-        }
+        // Initialize and start wake-word loop
+        wake.initialize(); wake.start()
+
+        binding.btnConnect.setOnClickListener { btMgr.initialize(); btMgr.connect() }
+        binding.btnSpeak.setOnClickListener { speech.startListening() }
+        // Movement buttons can call btMgr.send(...)
     }
 
-    // ✅ Start voice input using built-in recognizer
-    private fun startVoiceRecognition() {
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-US")
-            putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak now...")
-        }
-        voiceLauncher.launch(intent)
+    private fun onWake() {
+        runOnUiThread { speech.startListening() }
     }
 
-    private fun requestPermissionsAndConnect() {
-        val perms = arrayOf(
-            Manifest.permission.BLUETOOTH,
-            Manifest.permission.BLUETOOTH_ADMIN,
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.BLUETOOTH_CONNECT,
-            Manifest.permission.BLUETOOTH_SCAN
-        )
-        permissionLauncher.launch(perms)
-    }
-
-    private fun showDevicePicker() {
-        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
-            startActivity(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
-            return
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED
-        ) {
-            Toast.makeText(this, "Bluetooth connect permission denied", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val pairedDevices = bluetoothAdapter.bondedDevices.toList()
-        val deviceNames = pairedDevices.map { it.name ?: it.address }.toTypedArray()
-
-        AlertDialog.Builder(this)
-            .setTitle("Select HC-05 Device")
-            .setItems(deviceNames) { _, i ->
-                connectToDevice(pairedDevices[i])
-            }
-            .show()
-    }
-
-    private fun connectToDevice(device: BluetoothDevice) {
-        Thread {
-            try {
-                if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-                    runOnUiThread {
-                        Toast.makeText(this, "Bluetooth connect permission denied", Toast.LENGTH_SHORT).show()
-                    }
-                    return@Thread
-                }
-
-                bluetoothSocket = device.createRfcommSocketToServiceRecord(uuid)
-                bluetoothAdapter?.cancelDiscovery()
-                bluetoothSocket?.connect()
-
-                runOnUiThread {
-                    Toast.makeText(this, "Connected to ${device.name}", Toast.LENGTH_SHORT).show()
-                }
-            } catch (e: IOException) {
-                e.printStackTrace()
-                runOnUiThread {
-                    Toast.makeText(this, "Connection failed", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }.start()
-    }
-
-    private fun sendCommand(command: String) {
-        try {
-            val socket = bluetoothSocket
-            if (socket != null && socket.isConnected) {
-                socket.outputStream.write(command.toByteArray()) // send full string
-                Toast.makeText(this, "Sent: $command", Toast.LENGTH_SHORT).show()
-            } else {
-                Toast.makeText(this, "Not connected", Toast.LENGTH_SHORT).show()
-            }
-        } catch (e: IOException) {
-            e.printStackTrace()
-            Toast.makeText(this, "Failed to send command", Toast.LENGTH_SHORT).show()
+    private fun onSpeech(text: String) {
+        Toast.makeText(this, "Heard: $text", LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            val response = ai.interpret(text)
+            Toast.makeText(this@MainActivity, response, LENGTH_LONG).show()
+            // Map commands to btMgr.send(...)
+            wake.start()
         }
     }
 
     override fun onDestroy() {
-        bluetoothSocket?.close()
         super.onDestroy()
-        wakeWordManager.stop()
-        wakeWordManager.release()
-
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<out String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
-            showDevicePicker()
-        } else {
-            Toast.makeText(this, "Permissions denied", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-
-    //gemini services
-    private val geminiModel = GenerativeModel(
-        modelName = "gemini-1.5-flash", // Use current supported model
-        apiKey = "AIzaSyDDWp7kM3kLNZehIXpWonZ92IGxa1_I2_E",
-        systemInstruction = Content(
-            role  = "system",
-            parts = listOf(
-                TextPart(
-                    text = """
-                    You are Robo, an AI robot-controller assistant.
-                    • Answer concisely unless the user asks for detail.
-                    • You can handle any general question, but stay in character as Robo.
-                """.trimIndent()
-                )
-            )
-        )
-    )
-
-    private fun sendToGemini(recognizedText: String) {
-        // Show loading state
-        showGeminiResponse("Processing your request...")
-
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val response = geminiModel.generateContent(recognizedText)
-                val aiResponse = response.text ?: "No response generated"
-
-                runOnUiThread {
-                    showGeminiResponse("AI Response: $aiResponse")
-                }
-            } catch (e: Exception) {
-                runOnUiThread {
-                    showGeminiResponse("Error: ${e.message}")
-                }
-            }
-        }
-    }
-
-    private fun showGeminiResponse(message: String) {
-        // You can display this in a TextView, Dialog, or Toast
-        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-        binding.geminiResponseText.text = message
-
-        // Or if you have a TextView in your layout:
-        // binding.responseTextView.text = message
+        wake.stop(); wake.release()
+        btMgr.close()
     }
 }
+
