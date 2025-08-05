@@ -20,6 +20,22 @@ class BluetoothManager(
     private val adapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
     private var socket: BluetoothSocket? = null
 
+    fun initialize() {
+        if (adapter == null) {
+            throw IllegalStateException("Bluetooth not supported on this device")
+        }
+        if (!adapter.isEnabled) {
+            throw IllegalStateException("Bluetooth is not enabled")
+        }
+
+        val missing = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.BLUETOOTH_CONNECT
+        ) == PackageManager.PERMISSION_DENIED
+        if (missing) {
+            // Inform caller to request permission via ActivityCompat.requestPermissions(...)
+            throw SecurityException("Bluetooth connect permission is required")
+        }
+    }
     fun connect() {
         if (adapter == null || !adapter.isEnabled) return
 

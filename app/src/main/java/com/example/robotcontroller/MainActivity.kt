@@ -1,29 +1,13 @@
 package com.example.robotcontroller
 
-import android.Manifest
-import android.app.Activity
-import android.app.AlertDialog
-import android.bluetooth.*
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.icu.text.DisplayContext.LENGTH_SHORT
-import android.os.Build
+
+
 import android.os.Bundle
-import android.speech.RecognizerIntent
 import android.widget.Toast
-import android.widget.Toast.LENGTH_LONG
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.app.ActivityCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.robotcontroller.databinding.ActivityMainBinding
-import java.io.IOException
-import java.util.*
-import com.google.ai.client.generativeai.GenerativeModel
 import kotlinx.coroutines.*
-import com.google.ai.client.generativeai.*
-import com.google.ai.client.generativeai.type.Content
-import com.google.ai.client.generativeai.type.TextPart
 import com.example.robotcontroller.ai.AiManager
 import com.example.robotcontroller.bluetooth.BluetoothManager
 import com.example.robotcontroller.voice.WakeWordDetector
@@ -64,10 +48,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onSpeech(text: String) {
-        Toast.makeText(this, "Heard: $text", LENGTH_SHORT).show()
+        Toast.makeText(this, "Heard: $text", Toast.LENGTH_SHORT).show()
         lifecycleScope.launch {
             val response = ai.interpret(text)
-            Toast.makeText(this@MainActivity, response, LENGTH_LONG).show()
+            Toast.makeText(this@MainActivity, response, Toast.LENGTH_LONG).show()
             // Map commands to btMgr.send(...)
             wake.start()
         }
