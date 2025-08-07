@@ -12,6 +12,13 @@ import com.example.robotcontroller.ai.AiManager
 import com.example.robotcontroller.bluetooth.BluetoothManager
 import com.example.robotcontroller.voice.WakeWordDetector
 import com.example.robotcontroller.voice.SpeechRecognizerManager
+import android.view.MotionEvent
+import android.view.View
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+
 
 
 class MainActivity : AppCompatActivity() {
@@ -41,6 +48,33 @@ class MainActivity : AppCompatActivity() {
         binding.btnConnect.setOnClickListener { btMgr.initialize(); btMgr.connect() }
         binding.btnSpeak.setOnClickListener { speech.startListening() }
         // Movement buttons can call btMgr.send(...)
+        setupHoldToSend(binding.btnForward, "MOV-FD-#")
+        setupHoldToSend(binding.btnBack, "MOV-FD-#")
+        setupHoldToSend(binding.btnLeft, "MOV-LD-#")
+        setupHoldToSend(binding.btnRight, "MOV-RD-#")
+
+
+    }
+    private var moveJob: Job? = null
+
+    private fun setupHoldToSend(button: View, command: String) {
+        button.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    moveJob?.cancel()  // stop any previous job
+                    moveJob = lifecycleScope.launch {
+                        while (isActive) {
+                            btMgr.send(command)
+                            delay(700) // send every 0.7 sec
+                        }
+                    }
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    moveJob?.cancel()
+                }
+            }
+            true
+        }
     }
 
     private fun onWake() {
