@@ -1,10 +1,12 @@
 package com.example.robotcontroller
 
-
-
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.robotcontroller.databinding.ActivityMainBinding
 import kotlinx.coroutines.*
@@ -19,52 +21,162 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-
-
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var btMgr: BluetoothManager
     private lateinit var wake: WakeWordDetector
     private lateinit var speech: SpeechRecognizerManager
     private lateinit var ai: AiManager
+    val YOUR_WAKEWORD_KEY = "YEWpY2uu/ejh97A66zakeL/RP8q3/su52qIU8Xy/BDdQsBgxnw/YkQ=="
+    val YOUR_API_KEY = "AIzaSyDDWp7kM3kLNZehIXpWonZ92IGxa1_I2_E"
+    companion object {
+        private const val RECORD_AUDIO_PERMISSION_REQUEST_CODE = 1001
+        private const val BLUETOOTH_PERMISSIONS_REQUEST_CODE = 1002
+    }
 
-    override fun onCreate(saved: Bundle?) {
-        super.onCreate(saved)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Instantiate managers
-        val YOUR_WAKEWORD_KEY = "YEWpY2uu/ejh97A66zakeL/RP8q3/su52qIU8Xy/BDdQsBgxnw/YkQ=="
-        val YOUR_API_KEY= "Iz**aSyDDWp7kM3kLNZehIXpWonZ92IGxa1_I2_E"
-        btMgr = BluetoothManager(this) { /* handle FPGA messages if needed */ }
-        wake = WakeWordDetector(this, YOUR_WAKEWORD_KEY) { onWake() }
-        speech = SpeechRecognizerManager(this) { onSpeech(it) }
+        // Check and request permissions first
+        if (checkPermissions()) {
+            initializeComponents()
+        } else {
+            requestPermissions()
+        }
 
-        ai = AiManager(this, YOUR_API_KEY)
+        // Setup UI listeners
+        setupUIListeners()
+    }
 
-        // Initialize and start wake-word loop
-        wake.initialize(); wake.start()
+    private fun checkPermissions(): Boolean {
+        val recordAudioPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+        val bluetoothConnectPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT)
 
-        binding.btnConnect.setOnClickListener { btMgr.initialize(); btMgr.connect() }
-        binding.btnSpeak.setOnClickListener { speech.startListening() }
+        return recordAudioPermission == PackageManager.PERMISSION_GRANTED &&
+                bluetoothConnectPermission == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestPermissions() {
+        val permissionsToRequest = mutableListOf<String>()
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            permissionsToRequest.add(Manifest.permission.RECORD_AUDIO)
+        }
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            permissionsToRequest.add(Manifest.permission.BLUETOOTH_CONNECT)
+        }
+
+        if (permissionsToRequest.isNotEmpty()) {
+            ActivityCompat.requestPermissions(
+                this,
+                permissionsToRequest.toTypedArray(),
+                RECORD_AUDIO_PERMISSION_REQUEST_CODE
+            )
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+
+        when (requestCode) {
+            RECORD_AUDIO_PERMISSION_REQUEST_CODE -> {
+                var allGranted = true
+                for (result in grantResults) {
+                    if (result != PackageManager.PERMISSION_GRANTED) {
+                        allGranted = false
+                        break
+                    }
+                }
+
+                if (allGranted) {
+                    Toast.makeText(this, "Permissions granted! Initializing voice recognition...", Toast.LENGTH_SHORT).show()
+                    initializeComponents()
+                } else {
+                    Toast.makeText(this, "Permissions denied. Voice recognition will not work.", Toast.LENGTH_LONG).show()
+                    // Initialize components without voice features
+                    initializeComponentsWithoutVoice()
+                }
+            }
+        }
+    }
+
+    private fun initializeComponents() {
+        try {
+            // Instantiate managers
+
+            btMgr = BluetoothManager(this) { /* handle FPGA messages if needed */ }
+            wake = WakeWordDetector(this, YOUR_WAKEWORD_KEY) { onWake() }
+            speech = SpeechRecognizerManager(this) { onSpeech(it) }
+            ai = AiManager(this, YOUR_API_KEY)
+
+            // Initialize and start wake-word loop
+            wake.initialize()
+            wake.start()
+
+            Toast.makeText(this, "Voice recognition initialized successfully!", Toast.LENGTH_SHORT).show()
+
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error initializing voice components: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun initializeComponentsWithoutVoice() {
+        try {
+            btMgr = BluetoothManager(this) { /* handle FPGA messages if needed */ }
+            ai = AiManager(this, YOUR_API_KEY)
+
+            // Disable voice-related buttons
+            binding.btnSpeak.isEnabled = false
+            binding.btnSpeak.alpha = 0.5f
+
+            Toast.makeText(this, "Initialized without voice features", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error initializing: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun setupUIListeners() {
+        binding.btnConnect.setOnClickListener {
+            if (::btMgr.isInitialized) {
+                btMgr.initialize()
+                btMgr.connect()
+            }
+        }
+
+        binding.btnSpeak.setOnClickListener {
+            if (::speech.isInitialized) {
+                speech.startListening()
+            } else {
+                Toast.makeText(this, "Voice recognition not initialized. Please grant permissions and restart.", Toast.LENGTH_LONG).show()
+            }
+        }
+
         // Movement buttons can call btMgr.send(...)
         setupHoldToSend(binding.btnForward, "MOV-FD-#")
-        setupHoldToSend(binding.btnBack, "MOV-FD-#")
+        setupHoldToSend(binding.btnBack, "MOV-BD-#")  // Fixed typo: was "MOV-FD-#"
         setupHoldToSend(binding.btnLeft, "MOV-LD-#")
         setupHoldToSend(binding.btnRight, "MOV-RD-#")
-
-
     }
+
     private var moveJob: Job? = null
 
     private fun setupHoldToSend(button: View, command: String) {
         button.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    moveJob?.cancel()  // stop any previous job
+                    moveJob?.cancel() // stop any previous job
                     moveJob = lifecycleScope.launch {
                         while (isActive) {
-                            btMgr.send(command)
+                            if (::btMgr.isInitialized) {
+                                btMgr.send(command)
+                            }
                             delay(700) // send every 0.7 sec
                         }
                     }
@@ -78,23 +190,84 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onWake() {
-        runOnUiThread { speech.startListening() }
+        lifecycleScope.launch {
+            if (::wake.isInitialized) {
+                wake.stop() // release mic
+            }
+
+            delay(200) // give Android a moment to free the mic (200–500 ms)
+
+            if (::speech.isInitialized) {
+                if (ContextCompat.checkSelfPermission(
+                        this@MainActivity,
+                        Manifest.permission.RECORD_AUDIO
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    runOnUiThread {
+                        Toast.makeText(this@MainActivity, "Wake word detected! Listening...", Toast.LENGTH_SHORT).show()
+                        speech.startListening()
+                    }
+                } else {
+                    ActivityCompat.requestPermissions(
+                        this@MainActivity,
+                        arrayOf(Manifest.permission.RECORD_AUDIO),
+                        RECORD_AUDIO_PERMISSION_REQUEST_CODE
+                    )
+                }
+            }
+        }
     }
+
 
     private fun onSpeech(text: String) {
         Toast.makeText(this, "Heard: $text", Toast.LENGTH_SHORT).show()
         lifecycleScope.launch {
-            val response = ai.interpret(text)
-            Toast.makeText(this@MainActivity, response, Toast.LENGTH_LONG).show()
-            // Map commands to btMgr.send(...)
-            wake.start()
+            if (::ai.isInitialized) {
+                val response = ai.interpret(text)
+                Toast.makeText(this@MainActivity, response, Toast.LENGTH_LONG).show()
+
+                // Update TextView with AI response instead of Toast
+                runOnUiThread {
+                    binding.geminiResponseText.text = "You: $text\n\nAI: $response"
+                }
+                // Map commands to btMgr.send(...)
+
+
+                // Process voice commands
+                processVoiceCommand(text.lowercase())
+            }
+
+            // Restart wake word detection
+            if (::wake.isInitialized) {
+                wake.start()
+            }
+        }
+    }
+
+    private fun processVoiceCommand(command: String) {
+        if (!::btMgr.isInitialized) return
+
+        when {
+            command.contains("forward") || command.contains("move forward") -> btMgr.send("MOV-FD-#")
+            command.contains("backward") || command.contains("move back") -> btMgr.send("MOV-BD-#")
+            command.contains("left") || command.contains("turn left") -> btMgr.send("MOV-LD-#")
+            command.contains("right") || command.contains("turn right") -> btMgr.send("MOV-RD-#")
+            command.contains("stop") -> btMgr.send("STOP-#")
+            // Add more commands as needed
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        wake.stop(); wake.release()
-        btMgr.close()
+        if (::wake.isInitialized) {
+            wake.stop()
+            wake.release()
+        }
+        if (::btMgr.isInitialized) {
+            btMgr.close()
+        }
+        if (::speech.isInitialized) {
+            speech.destroy()
+        }
     }
 }
-

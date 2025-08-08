@@ -7,6 +7,7 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.content.pm.PackageManager
+import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import java.io.IOException
@@ -20,40 +21,42 @@ class BluetoothManager(
     private val adapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
     private var socket: BluetoothSocket? = null
 
-    fun initialize() {
+    fun hasRequiredPermissions(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.BLUETOOTH_CONNECT
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    fun initialize(): Boolean {
         if (adapter == null) {
-            throw IllegalStateException("Bluetooth not supported on this device")
+            return false // Bluetooth not supported
         }
         if (!adapter.isEnabled) {
-            throw IllegalStateException("Bluetooth is not enabled")
+            return false // Bluetooth not enabled
         }
 
-        val missing = ContextCompat.checkSelfPermission(
-            context, Manifest.permission.BLUETOOTH_CONNECT
-        ) == PackageManager.PERMISSION_DENIED
-        if (missing) {
-            // Inform caller to request permission via ActivityCompat.requestPermissions(...)
-            throw SecurityException("Bluetooth connect permission is required")
-        }
+        return hasRequiredPermissions()
     }
     fun connect() {
-        if (adapter == null || !adapter.isEnabled) return
-
-        val missing = ContextCompat.checkSelfPermission(
-            context, Manifest.permission.BLUETOOTH_CONNECT
-        ) == PackageManager.PERMISSION_DENIED
-        if (missing) {
-            // Inform caller to request permission via ActivityCompat.requestPermissions(...)
+        if (!hasRequiredPermissions()) {
+            Toast.makeText(context, "Bluetooth permissions required", Toast.LENGTH_SHORT).show()
             return
         }
 
-        val devices = adapter.bondedDevices.toList()
-        val names = devices.map { it.name ?: it.address }.toTypedArray()
-        AlertDialog.Builder(context)
-            .setTitle("Select HC-05 Device")
-            .setItems(names) { _, i -> connectTo(devices[i]) }
-            .show()
+        try {
+            // Safe Bluetooth calls
+            val devices = adapter?.bondedDevices?.toList() ?: return
+            val names = devices.map { it.name ?: it.address }.toTypedArray()
+            AlertDialog.Builder(context)
+                .setTitle("Select HC-05 Device")
+                .setItems(names) { _, i -> connectTo(devices[i]) }
+                .show()
+        } catch (e: SecurityException) {
+            Toast.makeText(context, "Bluetooth permission denied", Toast.LENGTH_SHORT).show()
+        }
     }
+
 
     private fun connectTo(device: BluetoothDevice) {
         Thread {
