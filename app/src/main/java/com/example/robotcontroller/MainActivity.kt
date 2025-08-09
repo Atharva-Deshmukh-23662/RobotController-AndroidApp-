@@ -236,6 +236,7 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             if (::ai.isInitialized && ::taskHandler.isInitialized) {
+                // Display the command received
                 try {
                     // Get structured actions from AI
                     val actions = ai.interpretToActions(text)

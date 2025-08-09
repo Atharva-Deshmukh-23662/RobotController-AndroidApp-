@@ -82,7 +82,6 @@ class BluetoothManager(
         }.start()
     }
 
-    // In BluetoothManager.kt
     fun send(message: String) {
         try {
             Log.d("BluetoothManager", "Sending message: $message")

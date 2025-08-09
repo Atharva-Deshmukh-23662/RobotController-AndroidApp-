@@ -1,6 +1,7 @@
 package com.example.robotcontroller.tasks
 
 import android.content.Context
+import android.util.Log
 import android.widget.Toast
 import androidx.lifecycle.LifecycleCoroutineScope
 import com.example.robotcontroller.ai.RobotAction
@@ -31,14 +32,20 @@ class TaskHandler(
     ) {
         // Cancel any existing task
         cancelCurrentTask()
+        Log.d("TaskHandler", "executeTaskSequence() called with ${actions.size} actions")
+        Log.d("TaskHandler", "Actions: ${actions.joinToString { it.action }}")
+
 
         if (actions.isEmpty()) {
             onError?.invoke("No actions to execute")
+            Toast.makeText(context, "No actions to execute", Toast.LENGTH_SHORT).show()
+            Log.w("TaskHandler", "No actions provided for task sequence")
             return
         }
 
         currentTaskJob = lifecycleScope.launch {
             try {
+                Log.d("TaskHandler", "Starting executeActionsSequentially() with ${actions.size} actions, currentTaskJob: $currentTaskJob, isActive: ${currentTaskJob?.isActive}, isCompleted: ${currentTaskJob?.isCompleted}")
                 executeActionsSequentially(actions, onProgress)
 
                 // Task completed successfully
@@ -67,9 +74,14 @@ class TaskHandler(
         actions: List<RobotAction>,
         onProgress: ((Int, Int, String) -> Unit)?
     ) {
+        Log.d("TaskHandler", "Executing actions sequentially, total actions: ${actions.size}")
         for ((index, action) in actions.withIndex()) {
+
+            Log.d("TaskHandler", "Executing action $index: ${action.action} with params ${action.params}")
+
             // FIXED: Proper null-safe check for task cancellation
             val job = currentTaskJob
+
             if (job == null || !job.isActive) {
                 throw CancellationException("Task was cancelled")
             }
@@ -80,6 +92,7 @@ class TaskHandler(
             }
 
             // Execute the action
+            Log.d("TaskHandler", "Executing executeAction(): ${action.action} with params ${action.params}")
             executeAction(action)
 
             // Small delay between actions for smoother execution
@@ -88,6 +101,7 @@ class TaskHandler(
     }
 
     private suspend fun executeAction(action: RobotAction) {
+        Log.d("TaskHandler", "excuteAction(): ${action.action} with params ${action.params}")
         when (action.action) {
             "go_straight" -> {
                 val duration = action.params.firstOrNull() as? Number ?: 1000
