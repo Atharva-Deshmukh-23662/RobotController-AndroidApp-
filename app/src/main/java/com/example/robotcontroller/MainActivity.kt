@@ -11,9 +11,11 @@ import androidx.lifecycle.lifecycleScope
 import com.example.robotcontroller.databinding.ActivityMainBinding
 import kotlinx.coroutines.*
 import com.example.robotcontroller.ai.AiManager
+import com.example.robotcontroller.ai.RobotAction
 import com.example.robotcontroller.bluetooth.BluetoothManager
 import com.example.robotcontroller.voice.WakeWordDetector
 import com.example.robotcontroller.voice.SpeechRecognizerManager
+import com.example.robotcontroller.tasks.TaskHandler
 import android.view.MotionEvent
 import android.view.View
 import kotlinx.coroutines.Job
@@ -27,8 +29,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var wake: WakeWordDetector
     private lateinit var speech: SpeechRecognizerManager
     private lateinit var ai: AiManager
+    private lateinit var taskHandler: TaskHandler
+
     val YOUR_WAKEWORD_KEY = "YEWpY2uu/ejh97A66zakeL/RP8q3/su52qIU8Xy/BDdQsBgxnw/YkQ=="
     val YOUR_API_KEY = "AIzaSyDDWp7kM3kLNZehIXpWonZ92IGxa1_I2_E"
+
     companion object {
         private const val RECORD_AUDIO_PERMISSION_REQUEST_CODE = 1001
         private const val BLUETOOTH_PERMISSIONS_REQUEST_CODE = 1002
@@ -80,7 +85,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
-        permissions: Array<out String>,
+        permissions: Array<String>,
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
@@ -110,11 +115,11 @@ class MainActivity : AppCompatActivity() {
     private fun initializeComponents() {
         try {
             // Instantiate managers
-
             btMgr = BluetoothManager(this) { /* handle FPGA messages if needed */ }
             wake = WakeWordDetector(this, YOUR_WAKEWORD_KEY) { onWake() }
             speech = SpeechRecognizerManager(this) { onSpeech(it) }
             ai = AiManager(this, YOUR_API_KEY)
+            taskHandler = TaskHandler(this, btMgr, lifecycleScope)
 
             // Initialize and start wake-word loop
             wake.initialize()
@@ -131,6 +136,7 @@ class MainActivity : AppCompatActivity() {
         try {
             btMgr = BluetoothManager(this) { /* handle FPGA messages if needed */ }
             ai = AiManager(this, YOUR_API_KEY)
+            taskHandler = TaskHandler(this, btMgr, lifecycleScope)
 
             // Disable voice-related buttons
             binding.btnSpeak.isEnabled = false
@@ -158,9 +164,16 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Movement buttons can call btMgr.send(...)
+        // Add stop task button listener (you may need to add this button to your layout)
+        // binding.btnStopTask.setOnClickListener {
+        //     if (::taskHandler.isInitialized) {
+        //         taskHandler.cancelCurrentTask()
+        //     }
+        // }
+
+        // Movement buttons for manual control
         setupHoldToSend(binding.btnForward, "MOV-FD-#")
-        setupHoldToSend(binding.btnBack, "MOV-BD-#")  // Fixed typo: was "MOV-FD-#"
+        setupHoldToSend(binding.btnBack, "MOV-BD-#")
         setupHoldToSend(binding.btnLeft, "MOV-LD-#")
         setupHoldToSend(binding.btnRight, "MOV-RD-#")
     }
@@ -177,7 +190,7 @@ class MainActivity : AppCompatActivity() {
                             if (::btMgr.isInitialized) {
                                 btMgr.send(command)
                             }
-                            delay(50) // send every 0.05 sec
+                            delay(700) // send every 0.7 sec
                         }
                     }
                 }
@@ -195,7 +208,7 @@ class MainActivity : AppCompatActivity() {
                 wake.stop() // release mic
             }
 
-            delay(200) // give Android a moment to free the mic (200–500 ms)
+            delay(200) // give Android a moment to free the mic
 
             if (::speech.isInitialized) {
                 if (ContextCompat.checkSelfPermission(
@@ -218,23 +231,68 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-
     private fun onSpeech(text: String) {
         Toast.makeText(this, "Heard: $text", Toast.LENGTH_SHORT).show()
+
         lifecycleScope.launch {
-            if (::ai.isInitialized) {
-                val response = ai.interpret(text)
-                Toast.makeText(this@MainActivity, response, Toast.LENGTH_LONG).show()
+            if (::ai.isInitialized && ::taskHandler.isInitialized) {
+                try {
+                    // Get structured actions from AI
+                    val actions = ai.interpretToActions(text)
 
-                // Update TextView with AI response instead of Toast
-                runOnUiThread {
-                    binding.geminiResponseText.text = "You: $text\n\nAI: $response"
+                    if (actions.isNotEmpty()) {
+                        // Display the planned actions
+                        val actionsText = actions.joinToString(" → ") { action ->
+                            when (action.action) {
+                                "go_straight" -> "Forward ${action.params.firstOrNull()}ms"
+                                "go_backward" -> "Backward ${action.params.firstOrNull()}ms"
+                                "turn_left" -> "Turn Left"
+                                "turn_right" -> "Turn Right"
+                                "stop" -> "Stop"
+                                else -> action.action
+                            }
+                        }
+
+                        runOnUiThread {
+                            binding.geminiResponseText.text = "Command: $text\n\nPlanned Actions:\n$actionsText\n\nExecuting..."
+                        }
+
+                        // Execute the action sequence
+                        taskHandler.executeTaskSequence(
+                            actions = actions,
+                            onProgress = { current, total, action ->
+                                runOnUiThread {
+                                    binding.geminiResponseText.text =
+                                        "Command: $text\n\nProgress: $current/$total\nCurrent: $action"
+                                }
+                            },
+                            onComplete = {
+                                runOnUiThread {
+                                    binding.geminiResponseText.text =
+                                        "Command: $text\n\nTask completed successfully! ✅"
+                                }
+                            },
+                            onError = { error ->
+                                runOnUiThread {
+                                    binding.geminiResponseText.text =
+                                        "Command: $text\n\nError: $error ❌"
+                                }
+                            }
+                        )
+
+                    } else {
+                        // No actions generated, provide conversational response
+                        val response = ai.interpret(text)
+                        runOnUiThread {
+                            binding.geminiResponseText.text = "You: $text\n\nAI: $response"
+                        }
+                    }
+
+                } catch (e: Exception) {
+                    runOnUiThread {
+                        binding.geminiResponseText.text = "Error processing command: ${e.message}"
+                    }
                 }
-                // Map commands to btMgr.send(...)
-
-
-                // Process voice commands
-                processVoiceCommand(text.lowercase())
             }
 
             // Restart wake word detection
@@ -244,16 +302,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun processVoiceCommand(command: String) {
-        if (!::btMgr.isInitialized) return
+    /**
+     * Manual method to execute predefined sequences for testing
+     */
+    private fun testTaskSequence() {
+        if (::taskHandler.isInitialized) {
+            val testActions = listOf(
+                RobotAction("go_straight", listOf(2000)),  // Forward 2 seconds
+                RobotAction("turn_left", emptyList()),      // Turn left
+                RobotAction("go_straight", listOf(1000)),   // Forward 1 second
+                RobotAction("turn_right", emptyList()),     // Turn right
+                RobotAction("stop", emptyList())            // Stop
+            )
 
-        when {
-            command.contains("forward") || command.contains("move forward") -> btMgr.send("MOV-FD-#")
-            command.contains("backward") || command.contains("move back") -> btMgr.send("MOV-BD-#")
-            command.contains("left") || command.contains("turn left") -> btMgr.send("MOV-LD-#")
-            command.contains("right") || command.contains("turn right") -> btMgr.send("MOV-RD-#")
-            command.contains("stop") -> btMgr.send("STOP-#")
-            // Add more commands as needed
+            taskHandler.executeTaskSequence(testActions)
         }
     }
 
@@ -268,6 +330,9 @@ class MainActivity : AppCompatActivity() {
         }
         if (::speech.isInitialized) {
             speech.destroy()
+        }
+        if (::taskHandler.isInitialized) {
+            taskHandler.cancelCurrentTask()
         }
     }
 }
