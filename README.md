@@ -240,9 +240,9 @@ This project is developed for academic purposes. Please respect the educational 
 
 ## 📞 Contact
 
-**Developer**: Atharva Deshmukh  
+**Developer**: Atharva Deshmukh, Sumit Shelwane, Rajvardhan Deshmukh
 **Project**: 4th Year Engineering Project  
-**Institution**: [Your College/University Name]
+**Institution**: TSSM Bhivarabai Sawant College of Engineering and Reaserch
 
 ---
 
