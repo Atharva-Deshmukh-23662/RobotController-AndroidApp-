@@ -8,6 +8,7 @@ import com.example.robotcontroller.ai.RobotAction
 import com.example.robotcontroller.actions.RobotActions
 import com.example.robotcontroller.bluetooth.BluetoothManager
 import kotlinx.coroutines.*
+import kotlin.coroutines.coroutineContext
 
 class TaskHandler(
     private val context: Context,
@@ -79,12 +80,8 @@ class TaskHandler(
 
             Log.d("TaskHandler", "Executing action $index: ${action.action} with params ${action.params}")
 
-            // FIXED: Proper null-safe check for task cancellation
-            val job = currentTaskJob
-
-            if (job == null || !job.isActive) {
-                throw CancellationException("Task was cancelled")
-            }
+            // Use built-in coroutine cancellation instead of external Job
+            coroutineContext.ensureActive()
 
             // Update progress
             withContext(Dispatchers.Main) {

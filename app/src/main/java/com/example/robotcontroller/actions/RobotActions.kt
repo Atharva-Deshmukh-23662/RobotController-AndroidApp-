@@ -11,7 +11,7 @@ import android.util.Log
 class RobotActions(private val bluetoothManager: BluetoothManager) {
 
     companion object {
-        private const val COMMAND_INTERVAL_MS = 50L // Send commands every 50ms for smooth movement
+        private const val COMMAND_INTERVAL_MS = 100L // Send commands every 50ms for smooth movement
         private const val TAG = "RobotActions"
 
         // UART Command Protocol
