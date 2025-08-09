@@ -9,6 +9,18 @@ This 4th-year project combines mobile technology with robotics, creating a smart
 - **FPGA Hardware**: Controls motors and grippers
 - **Bluetooth Communication**: HC-05 module for wireless control
 
+## Project Scope
+
+This project focuses on developing a small-scale mobile robot capable of completing simple, physical tasks within a defined indoor environment.  
+The tasks are intentionally varied to test the robot’s adaptability and include:
+
+- **Object Retrieval:** Picking and bringing an item from a designated location.
+- **Sorting:** Identifying and arranging small boxes based on category or size.
+- **Path Drawing:** Moving in a pattern to “draw” shapes or letters on the floor.
+
+While currently built for a controlled, small-scale environment, this MVP has potential for industrial-oriented use cases in warehouse automation, indoor delivery, and smart factory operations, once scaled with stronger hardware, better perception, and robust autonomy.
+
+
 ## ✨ Key Features
 
 ### 🗣️ Voice Recognition & AI
