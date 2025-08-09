@@ -190,7 +190,7 @@ class MainActivity : AppCompatActivity() {
                             if (::btMgr.isInitialized) {
                                 btMgr.send(command)
                             }
-                            delay(700) // send every 0.7 sec
+                            delay(100) // send every 0.7 sec
                         }
                     }
                 }

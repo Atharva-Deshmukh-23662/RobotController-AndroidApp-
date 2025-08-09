@@ -48,9 +48,10 @@ class TaskHandler(
                 }
 
             } catch (e: CancellationException) {
-                // Task was cancelled
+                // Task was cancelled - don't show toast here as it's already shown in cancelCurrentTask()
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Task cancelled", Toast.LENGTH_SHORT).show()
+                    // Only show if it wasn't manually cancelled
+                    // Toast.makeText(context, "Task cancelled", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 // Task failed
@@ -67,8 +68,9 @@ class TaskHandler(
         onProgress: ((Int, Int, String) -> Unit)?
     ) {
         for ((index, action) in actions.withIndex()) {
-            // Check if task was cancelled
-            if (!currentTaskJob?.isActive!!) {
+            // FIXED: Proper null-safe check for task cancellation
+            val job = currentTaskJob
+            if (job == null || !job.isActive) {
                 throw CancellationException("Task was cancelled")
             }
 
@@ -114,15 +116,18 @@ class TaskHandler(
      * Cancel the currently executing task sequence
      */
     fun cancelCurrentTask() {
-        currentTaskJob?.cancel()
-        currentTaskJob = null
+        val job = currentTaskJob
+        if (job != null && job.isActive) {
+            job.cancel()
+            currentTaskJob = null
 
-        // Stop robot movement immediately
-        lifecycleScope.launch {
-            robotActions.stop()
+            // Stop robot movement immediately
+            lifecycleScope.launch {
+                robotActions.stop()
+            }
+
+            Toast.makeText(context, "Task cancelled", Toast.LENGTH_SHORT).show()
         }
-
-        Toast.makeText(context, "Task cancelled", Toast.LENGTH_SHORT).show()
     }
 
     /**

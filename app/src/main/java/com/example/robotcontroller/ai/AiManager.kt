@@ -9,8 +9,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONException
+import android.util.Log
 
 class AiManager(context: Context, apiKey: String) {
+
+    companion object {
+        private const val TAG = "AiManager"
+    }
+
     private val model = GenerativeModel(
         modelName = "gemini-1.5-flash",
         apiKey = apiKey,
@@ -35,10 +41,14 @@ class AiManager(context: Context, apiKey: String) {
                 Input: "go back 3 seconds then turn right"
                 Output: [{"action": "go_backward", "params": [3000]}, {"action": "turn_right", "params": []}]
                 
+                Input: "turn right"
+                Output: [{"action": "turn_right", "params": []}]
+                
                 Input: "stop the robot"
                 Output: [{"action": "stop", "params": []}]
                 
                 Convert time references to milliseconds (1 sec = 1000ms, 2 sec = 2000ms, etc.)
+                If no duration is specified for movement commands, use 1000ms as default.
             """.trimIndent()))
         ),
         generationConfig = generationConfig {
@@ -47,17 +57,29 @@ class AiManager(context: Context, apiKey: String) {
     )
 
     suspend fun interpretToActions(text: String): List<RobotAction> = withContext(Dispatchers.IO) {
+        Log.d(TAG, "Processing voice command: $text")
         try {
             val response = model.generateContent(text).text ?: "[]"
-            parseActions(response)
+            Log.d(TAG, "AI Response: $response")
+            val actions = parseActions(response)
+            Log.d(TAG, "Parsed ${actions.size} actions: ${actions.map { it.action }}")
+            actions
         } catch (e: Exception) {
+            Log.e(TAG, "AI processing failed, using fallback", e)
             // Fallback: try to extract basic commands manually
-            extractBasicCommands(text)
+            val fallbackActions = extractBasicCommands(text)
+            Log.d(TAG, "Fallback extracted ${fallbackActions.size} actions: ${fallbackActions.map { it.action }}")
+            fallbackActions
         }
     }
 
     suspend fun interpret(text: String): String = withContext(Dispatchers.IO) {
-        model.generateContent("Respond conversationally to: $text").text ?: ""
+        try {
+            model.generateContent("Respond conversationally to: $text").text ?: ""
+        } catch (e: Exception) {
+            Log.e(TAG, "Conversational AI failed", e)
+            "I heard '$text' but couldn't process it properly."
+        }
     }
 
     private fun parseActions(jsonString: String): List<RobotAction> {
@@ -79,6 +101,7 @@ class AiManager(context: Context, apiKey: String) {
                 actions.add(RobotAction(actionName, params))
             }
         } catch (e: JSONException) {
+            Log.e(TAG, "JSON parsing failed: $jsonString", e)
             // If JSON parsing fails, return empty list
             return emptyList()
         }
@@ -94,12 +117,20 @@ class AiManager(context: Context, apiKey: String) {
         val timeMatch = timeRegex.find(lowerText)
         val duration = timeMatch?.groupValues?.get(1)?.toIntOrNull()?.times(1000) ?: 1000
 
+        Log.d(TAG, "Fallback parsing: '$lowerText', extracted duration: ${duration}ms")
+
         when {
-            lowerText.contains("forward") || lowerText.contains("ahead") -> {
+            lowerText.contains("forward") || lowerText.contains("ahead") || lowerText.contains("straight") -> {
                 actions.add(RobotAction("go_straight", listOf(duration)))
             }
             lowerText.contains("backward") || lowerText.contains("back") -> {
                 actions.add(RobotAction("go_backward", listOf(duration)))
+            }
+            lowerText.contains("turn left") || (lowerText.contains("left") && lowerText.contains("turn")) -> {
+                actions.add(RobotAction("turn_left", emptyList()))
+            }
+            lowerText.contains("turn right") || (lowerText.contains("right") && lowerText.contains("turn")) -> {
+                actions.add(RobotAction("turn_right", emptyList()))
             }
             lowerText.contains("left") -> {
                 actions.add(RobotAction("turn_left", emptyList()))
