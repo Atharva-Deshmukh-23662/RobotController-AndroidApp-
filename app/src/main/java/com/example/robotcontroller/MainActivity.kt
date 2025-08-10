@@ -11,6 +11,7 @@ import androidx.lifecycle.lifecycleScope
 import com.example.robotcontroller.databinding.ActivityMainBinding
 import kotlinx.coroutines.*
 import com.example.robotcontroller.ai.AiManager
+import com.example.robotcontroller.ai.AiResponse
 import com.example.robotcontroller.ai.RobotAction
 import com.example.robotcontroller.bluetooth.BluetoothManager
 import com.example.robotcontroller.voice.WakeWordDetector
@@ -107,7 +108,6 @@ class MainActivity : AppCompatActivity() {
                     initializeComponents()
                 } else {
                     Toast.makeText(this, "Permissions denied. Voice recognition will not work.", Toast.LENGTH_LONG).show()
-                    // Initialize components without voice features
                     initializeComponentsWithoutVoice()
                 }
             }
@@ -116,21 +116,21 @@ class MainActivity : AppCompatActivity() {
 
     private fun initializeComponents() {
         try {
-            // Instantiate managers
             btMgr = BluetoothManager(this) { /* handle FPGA messages if needed */ }
             wake = WakeWordDetector(this, YOUR_WAKEWORD_KEY) { onWake() }
             speech = SpeechRecognizerManager(this) { onSpeech(it) }
             ai = AiManager(this, YOUR_API_KEY)
             taskHandler = TaskHandler(this, btMgr, lifecycleScope)
 
-            // Initialize and start wake-word loop
             wake.initialize()
             wake.start()
 
             Toast.makeText(this, "Voice recognition initialized successfully!", Toast.LENGTH_SHORT).show()
+            Log.d(TAG, "All components initialized successfully")
 
         } catch (e: Exception) {
             Toast.makeText(this, "Error initializing voice components: ${e.message}", Toast.LENGTH_LONG).show()
+            Log.e(TAG, "Error initializing components", e)
         }
     }
 
@@ -140,7 +140,6 @@ class MainActivity : AppCompatActivity() {
             ai = AiManager(this, YOUR_API_KEY)
             taskHandler = TaskHandler(this, btMgr, lifecycleScope)
 
-            // Disable voice-related buttons
             binding.btnSpeak.isEnabled = false
             binding.btnSpeak.alpha = 0.5f
 
@@ -179,13 +178,13 @@ class MainActivity : AppCompatActivity() {
         button.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    moveJob?.cancel() // stop any previous job
+                    moveJob?.cancel()
                     moveJob = lifecycleScope.launch {
                         while (isActive) {
                             if (::btMgr.isInitialized) {
                                 btMgr.send(command)
                             }
-                            delay(100) // send every 0.1 sec
+                            delay(100)
                         }
                     }
                 }
@@ -200,10 +199,10 @@ class MainActivity : AppCompatActivity() {
     private fun onWake() {
         lifecycleScope.launch {
             if (::wake.isInitialized) {
-                wake.stop() // release mic
+                wake.stop()
             }
 
-            delay(200) // give Android a moment to free the mic
+            delay(200)
 
             if (::speech.isInitialized) {
                 if (ContextCompat.checkSelfPermission(
@@ -233,60 +232,80 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             if (::ai.isInitialized && ::taskHandler.isInitialized) {
                 try {
-                    // Get structured actions from AI
-                    val actions = ai.interpretToActions(text)
-                    Log.d(TAG, "AI returned ${actions.size} actions")
+                    // Single AI call that handles both actions and conversations
+                    val aiResponse = ai.processInput(text)
+                    Log.d(TAG, "AI response type: ${aiResponse::class.simpleName}")
 
-                    if (actions.isNotEmpty()) {
-                        // This is a movement command - execute actions
-                        Log.d(TAG, "Executing movement actions: ${actions.map { it.action }}")
+                    when (aiResponse) {
+                        is AiResponse.Actions -> {
+                            // Handle movement commands
+                            Log.d(TAG, "Executing actions: ${aiResponse.actions.map { it.action }}")
 
-                        val actionsText = actions.joinToString(" → ") { action ->
-                            when (action.action) {
-                                "go_straight" -> "Forward ${action.params.firstOrNull()}ms"
-                                "go_backward" -> "Backward ${action.params.firstOrNull()}ms"
-                                "turn_left" -> "Turn Left"
-                                "turn_right" -> "Turn Right"
-                                "stop" -> "Stop"
-                                else -> action.action
-                            }
-                        }
-
-                        runOnUiThread {
-                            binding.geminiResponseText.text = "Command: $text\n\nPlanned Actions:\n$actionsText\n\nExecuting..."
-                        }
-
-                        // Execute the action sequence
-                        taskHandler.executeTaskSequence(
-                            actions = actions,
-                            onProgress = { current, total, action ->
-                                runOnUiThread {
-                                    binding.geminiResponseText.text =
-                                        "Command: $text\n\nProgress: $current/$total\nCurrent: $action"
-                                }
-                            },
-                            onComplete = {
-                                runOnUiThread {
-                                    binding.geminiResponseText.text =
-                                        "Command: $text\n\nTask completed successfully! ✅"
-                                }
-                            },
-                            onError = { error ->
-                                runOnUiThread {
-                                    binding.geminiResponseText.text =
-                                        "Command: $text\n\nError: $error ❌"
+                            val actionsText = aiResponse.actions.joinToString(" → ") { action ->
+                                when (action.action) {
+                                    "go_straight" -> "Forward ${action.params.firstOrNull()}ms"
+                                    "go_backward" -> "Backward ${action.params.firstOrNull()}ms"
+                                    "turn_left" -> "Turn Left"
+                                    "turn_right" -> "Turn Right"
+                                    "stop" -> "Stop"
+                                    else -> action.action
                                 }
                             }
-                        )
 
-                    } else {
-                        // This is a conversational query - get AI response
-                        Log.d(TAG, "No actions detected, getting conversational response")
-                        val response = ai.interpret(text)
-                        Log.d(TAG, "Conversational AI response: $response")
+                            // Show recent conversation context
+                            val recentConversations = ai.getConversationMemory().getRecentConversations(2)
+                            val contextText = if (recentConversations.isNotEmpty()) {
+                                "\nRecent context:\n" + recentConversations.joinToString("\n") {
+                                    "• ${it.userInput} → ${if (it.isMovementCommand) "[Action executed]" else it.aiResponse}"
+                                }
+                            } else ""
 
-                        runOnUiThread {
-                            binding.geminiResponseText.text = "You: $text\n\nRobo: $response"
+                            runOnUiThread {
+                                binding.geminiResponseText.text =
+                                    "Command: $text\n\nPlanned Actions:\n$actionsText\n\nExecuting...$contextText"
+                            }
+
+                            // Execute the action sequence
+                            taskHandler.executeTaskSequence(
+                                actions = aiResponse.actions,
+                                onProgress = { current, total, action ->
+                                    runOnUiThread {
+                                        binding.geminiResponseText.text =
+                                            "Command: $text\n\nProgress: $current/$total\nCurrent: $action$contextText"
+                                    }
+                                },
+                                onComplete = {
+                                    runOnUiThread {
+                                        binding.geminiResponseText.text =
+                                            "Command: $text\n\nTask completed successfully! ✅$contextText"
+                                    }
+                                },
+                                onError = { error ->
+                                    runOnUiThread {
+                                        binding.geminiResponseText.text =
+                                            "Command: $text\n\nError: $error ❌$contextText"
+                                    }
+                                }
+                            )
+                        }
+
+                        is AiResponse.Conversation -> {
+                            // Handle conversational responses
+                            Log.d(TAG, "Conversational response: ${aiResponse.message}")
+
+                            // Show conversation history
+                            val recentConversations = ai.getConversationMemory().getRecentConversations(3)
+                            val historyText = if (recentConversations.size > 1) {
+                                "\n\n--- Recent conversation ---\n" +
+                                        recentConversations.dropLast(1).joinToString("\n") {
+                                            "You: ${it.userInput}\nRobo: ${if (it.isMovementCommand) "[Executed ${it.aiResponse}]" else it.aiResponse}"
+                                        }
+                            } else ""
+
+                            runOnUiThread {
+                                binding.geminiResponseText.text =
+                                    "You: $text\n\nRobo: ${aiResponse.message}$historyText"
+                            }
                         }
                     }
 
@@ -299,7 +318,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             // Restart wake word detection
-            delay(500) // Give some time for the response to be displayed
+            delay(1000)
             if (::wake.isInitialized) {
                 Log.d(TAG, "Restarting wake word detection")
                 wake.start()
@@ -308,19 +327,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Manual method to execute predefined sequences for testing
+     * Clear conversation memory
      */
-    private fun testTaskSequence() {
-        if (::taskHandler.isInitialized) {
-            val testActions = listOf(
-                RobotAction("go_straight", listOf(2000)), // Forward 2 seconds
-                RobotAction("turn_left", emptyList()), // Turn left
-                RobotAction("go_straight", listOf(1000)), // Forward 1 second
-                RobotAction("turn_right", emptyList()), // Turn right
-                RobotAction("stop", emptyList()) // Stop
-            )
-
-            taskHandler.executeTaskSequence(testActions)
+    fun clearConversationMemory() {
+        if (::ai.isInitialized) {
+            ai.clearMemory()
+            runOnUiThread {
+                binding.geminiResponseText.text = "Conversation memory cleared! Starting fresh."
+                Toast.makeText(this, "Memory cleared", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 

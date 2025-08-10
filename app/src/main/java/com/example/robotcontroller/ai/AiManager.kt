@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONException
+import org.json.JSONObject
 import android.util.Log
 
 class AiManager(context: Context, apiKey: String) {
@@ -17,42 +18,31 @@ class AiManager(context: Context, apiKey: String) {
         private const val TAG = "AiManager"
     }
 
-    // Model for action-based commands
-    private val actionModel = GenerativeModel(
-        modelName = "gemini-1.5-flash",
+    // Conversation memory instance
+    private val conversationMemory = ConversationMemory()
+
+    // Single unified model that handles both actions and conversations
+    private val unifiedModel = GenerativeModel(
+        modelName = "gemini-2.0-flash-lite",
         apiKey = apiKey,
         systemInstruction = Content(
             role = "system",
             parts = listOf(TextPart(text = """
-                You are Robo, an AI robot-controller assistant that converts movement commands into structured action sequences.
-                
-                Available Actions:
-                - go_straight(duration_ms): Move forward for specified milliseconds
-                - go_backward(duration_ms): Move backward for specified milliseconds 
-                - turn_left(): Turn left (takes ~1 second)
-                - turn_right(): Turn right (takes ~1 second)
-                - stop(): Stop all movement
-                
-                IMPORTANT: 
-                - Only respond with JSON arrays for MOVEMENT/ACTION commands
-                - For conversational questions, greetings, or non-movement queries, respond with: {"type": "conversation"}
-                
-                Movement Command Examples:
-                Input: "move forward for 2 seconds and turn left"
-                Output: [{"action": "go_straight", "params": [2000]}, {"action": "turn_left", "params": []}]
-                
-                Input: "go back 3 seconds then turn right"
-                Output: [{"action": "go_backward", "params": [3000]}, {"action": "turn_right", "params": []}]
-                
-                Non-Movement Examples:
-                Input: "what's your name"
-                Output: {"type": "conversation"}
-                
-                Input: "hello"
-                Output: {"type": "conversation"}
-                
-                Convert time references to milliseconds (1 sec = 1000ms, 2 sec = 2000ms, etc.)
-                If no duration is specified for movement commands, use 1000ms as default.
+                You are Robo, an AI assistant controlling a mobile robot. 
+                You understand commands to move: go_straight(ms), go_backward(ms), turn_left(), turn_right(), stop().  
+                Default move duration is 1000ms if unspecified.  
+
+                You must respond with JSON in one of these two formats:  
+
+                For movement commands:
+                {"type":"actions","actions":[{"action":"go_straight","params":[2000]},{"action": "turn_left", "params": [],...]}  
+
+                For conversations:
+                {"type":"conversation","message":"Your reply here"}  
+
+                Remember conversation context and refer to previous topics when relevant.  (context might be commented out sometime)
+                Keep replies concise, friendly and creative.
+
             """.trimIndent()))
         ),
         generationConfig = generationConfig {
@@ -60,128 +50,152 @@ class AiManager(context: Context, apiKey: String) {
         }
     )
 
-    // Model for conversational responses
-    private val conversationalModel = GenerativeModel(
-        modelName = "gemini-1.5-flash",
-        apiKey = apiKey,
-        systemInstruction = Content(
-            role = "system",
-            parts = listOf(TextPart(text = """
-                You are Robo, a friendly AI assistant controlling a mobile robot. 
-                Respond naturally and conversationally to questions and greetings.
-                Keep responses concise but friendly, be creative with your responses.
-                
-                Some information about yourself:
-                - Your name is Robo
-                - You're an AI assistant that controls a mobile robot
-                - You can move forward, backward, turn left, turn right, and stop
-                - You use voice commands to control movement
-                - You're part of a student's final year project
-                
-                Be helpful and engaging!
-            """.trimIndent()))
-        )
-    )
-
     /**
-     * Main interpretation method that determines if input is action-based or conversational
+     * Single method that handles both actions and conversations
      */
-    suspend fun interpretToActions(text: String): List<RobotAction> = withContext(Dispatchers.IO) {
-        Log.d(TAG, "Processing voice command: $text")
+    suspend fun processInput(text: String): AiResponse = withContext(Dispatchers.IO) {
+        Log.d(TAG, "Processing input: $text")
         try {
-            val response = actionModel.generateContent(text).text ?: "{\"type\": \"conversation\"}"
+            // Build context with conversation history
+//            val context = conversationMemory.getContextString()
+//            val fullPrompt = if (context.isNotEmpty()) {
+//                "$context\nCurrent user input: $text\n\nRespond with appropriate JSON format:"
+//            } else {
+//                text
+//            }
+            val fullPrompt = text
+
+
+            val response = unifiedModel.generateContent(fullPrompt).text ?: ""
             Log.d(TAG, "AI Response: $response")
 
-            // Check if it's a conversational response
-            if (response.contains("\"type\": \"conversation\"")) {
-                Log.d(TAG, "Detected conversational input, returning empty actions")
-                return@withContext emptyList()
+            val aiResponse = parseUnifiedResponse(response)
+
+            // Store in memory based on response type
+            when (aiResponse) {
+                is AiResponse.Actions -> {
+                    val actionSummary = aiResponse.actions.joinToString(", ") { "${it.action}(${it.params.joinToString()})" }
+                    conversationMemory.addConversation(text, actionSummary, true)
+                }
+                is AiResponse.Conversation -> {
+                    conversationMemory.addConversation(text, aiResponse.message, false)
+                }
             }
 
-            val actions = parseActions(response)
-            Log.d(TAG, "Parsed ${actions.size} actions: ${actions.map { it.action }}")
-            actions
+            aiResponse
+
         } catch (e: Exception) {
             Log.e(TAG, "AI processing failed, using fallback", e)
-            // Fallback: try to extract basic commands manually
-            val fallbackActions = extractBasicCommands(text)
-            Log.d(TAG, "Fallback extracted ${fallbackActions.size} actions: ${fallbackActions.map { it.action }}")
-            fallbackActions
-        }
-    }
+            val fallbackResponse = generateFallbackResponse(text)
 
-    /**
-     * Get conversational response for non-action queries
-     */
-    suspend fun interpret(text: String): String = withContext(Dispatchers.IO) {
-        Log.d(TAG, "Getting conversational response for: $text")
-        try {
-            val response = conversationalModel.generateContent(text).text ?: ""
-            Log.d(TAG, "Conversational response: $response")
-            response
-        } catch (e: Exception) {
-            Log.e(TAG, "Conversational AI failed", e)
-            "I heard '$text' but couldn't process it properly."
-        }
-    }
-
-    /**
-     * Check if the input is likely a conversational query rather than a movement command
-     */
-    private fun isConversationalQuery(text: String): Boolean {
-        val lowerText = text.lowercase().trim()
-
-        val conversationalKeywords = listOf(
-            "what's your name", "what is your name", "who are you",
-            "hello", "hi", "hey", "greetings",
-            "how are you", "what can you do", "help",
-            "what's up", "good morning", "good evening",
-            "nice to meet you", "tell me about yourself"
-        )
-
-        val movementKeywords = listOf(
-            "move", "go", "turn", "forward", "backward", "back",
-            "left", "right", "stop", "ahead", "straight"
-        )
-
-        // Check for exact conversational matches first
-        if (conversationalKeywords.any { keyword -> lowerText.contains(keyword) }) {
-            return true
-        }
-
-        // Check if it contains movement keywords
-        if (movementKeywords.any { keyword -> lowerText.contains(keyword) }) {
-            return false
-        }
-
-        // If unclear, default to conversational for questions (containing ?)
-        return lowerText.contains("?") || lowerText.startsWith("what") || lowerText.startsWith("who")
-    }
-
-    private fun parseActions(jsonString: String): List<RobotAction> {
-        val actions = mutableListOf<RobotAction>()
-        try {
-            val jsonArray = JSONArray(jsonString)
-            for (i in 0 until jsonArray.length()) {
-                val actionObj = jsonArray.getJSONObject(i)
-                val actionName = actionObj.getString("action")
-                val params = mutableListOf<Any>()
-
-                if (actionObj.has("params")) {
-                    val paramsArray = actionObj.getJSONArray("params")
-                    for (j in 0 until paramsArray.length()) {
-                        params.add(paramsArray.get(j))
-                    }
+            // Store fallback in memory
+            when (fallbackResponse) {
+                is AiResponse.Actions -> {
+                    val actionSummary = fallbackResponse.actions.joinToString(", ") { "${it.action}(${it.params.joinToString()})" }
+                    conversationMemory.addConversation(text, actionSummary, true)
                 }
+                is AiResponse.Conversation -> {
+                    conversationMemory.addConversation(text, fallbackResponse.message, false)
+                }
+            }
 
-                actions.add(RobotAction(actionName, params))
+            fallbackResponse
+        }
+    }
+
+    private fun parseUnifiedResponse(jsonString: String): AiResponse {
+        try {
+            val jsonObject = JSONObject(jsonString)
+            val type = jsonObject.getString("type")
+
+            return when (type) {
+                "actions" -> {
+                    val actionsArray = jsonObject.getJSONArray("actions")
+                    val actions = mutableListOf<RobotAction>()
+
+                    for (i in 0 until actionsArray.length()) {
+                        val actionObj = actionsArray.getJSONObject(i)
+                        val actionName = actionObj.getString("action")
+                        val params = mutableListOf<Any>()
+
+                        if (actionObj.has("params")) {
+                            val paramsArray = actionObj.getJSONArray("params")
+                            for (j in 0 until paramsArray.length()) {
+                                params.add(paramsArray.get(j))
+                            }
+                        }
+
+                        actions.add(RobotAction(actionName, params))
+                    }
+
+                    AiResponse.Actions(actions)
+                }
+                "conversation" -> {
+                    val message = jsonObject.getString("message")
+                    AiResponse.Conversation(message)
+                }
+                else -> {
+                    Log.w(TAG, "Unknown response type: $type")
+                    AiResponse.Conversation("I'm not sure how to respond to that.")
+                }
             }
         } catch (e: JSONException) {
             Log.e(TAG, "JSON parsing failed: $jsonString", e)
-            // If JSON parsing fails, return empty list
-            return emptyList()
+            return AiResponse.Conversation("I heard '$jsonString' but couldn't understand it properly.")
         }
-        return actions
+    }
+
+    private fun generateFallbackResponse(text: String): AiResponse {
+        val lowerText = text.lowercase().trim()
+
+        // Check for movement commands first
+        val actions = extractBasicCommands(text)
+        if (actions.isNotEmpty()) {
+            return AiResponse.Actions(actions)
+        }
+
+        // Handle conversational fallbacks with memory
+        val message = when {
+            lowerText.contains("my name") && lowerText.contains("what") -> {
+                // Look for previous name introductions
+                val previousConversations = conversationMemory.getRecentConversations(8)
+                for (conv in previousConversations.reversed()) {
+                    val input = conv.userInput.lowercase()
+                    if (input.contains("my name is") || input.contains("i'm") || input.contains("i am")) {
+                        val nameRegex = Regex("(?:my name is|i'm|i am)\\s+(\\w+)", RegexOption.IGNORE_CASE)
+                        val match = nameRegex.find(conv.userInput)
+                        if (match != null) {
+                            val name = match.groupValues[1]
+                            return AiResponse.Conversation("Your name is $name! I remembered that from our conversation.")
+                        }
+                    }
+                }
+                "I don't recall you telling me your name yet. What would you like me to call you?"
+            }
+
+            lowerText.contains("my name is") || lowerText.contains("i'm") || lowerText.contains("i am") -> {
+                val nameRegex = Regex("(?:my name is|i'm|i am)\\s+(\\w+)", RegexOption.IGNORE_CASE)
+                val match = nameRegex.find(text)
+                if (match != null) {
+                    val name = match.groupValues[1]
+                    "Nice to meet you, $name! I'll remember your name."
+                } else {
+                    "Nice to meet you! What would you like me to call you?"
+                }
+            }
+
+            lowerText.contains("what's your name") || lowerText.contains("who are you") ->
+                "I'm Robo, your AI robot assistant! I can chat with you and control robot movements."
+            lowerText.contains("hello") || lowerText.contains("hi") ->
+                "Hello! Great to chat with you again!"
+            lowerText.contains("how are you") ->
+                "I'm doing well, thank you! Ready to help you with robot control or just chat."
+            lowerText.contains("what can you do") ->
+                "I can have conversations with you and control robot movements like going forward, backward, turning, and stopping!"
+            else -> "I heard '$text' but I'm not sure how to respond to that properly."
+        }
+
+        return AiResponse.Conversation(message)
     }
 
     private fun extractBasicCommands(text: String): List<RobotAction> {
@@ -190,16 +204,13 @@ class AiManager(context: Context, apiKey: String) {
 
         // Check if it's conversational first
         if (isConversationalQuery(text)) {
-            Log.d(TAG, "Fallback detected conversational input: $text")
             return emptyList()
         }
 
-        // Extract time duration (look for numbers followed by "sec" or "second")
+        // Extract time duration
         val timeRegex = Regex("""(\d+)\s*(?:sec|second)s?""")
         val timeMatch = timeRegex.find(lowerText)
         val duration = timeMatch?.groupValues?.get(1)?.toIntOrNull()?.times(1000) ?: 1000
-
-        Log.d(TAG, "Fallback parsing: '$lowerText', extracted duration: ${duration}ms")
 
         when {
             lowerText.contains("forward") || lowerText.contains("ahead") || lowerText.contains("straight") -> {
@@ -227,6 +238,58 @@ class AiManager(context: Context, apiKey: String) {
 
         return actions
     }
+
+    private fun isConversationalQuery(text: String): Boolean {
+        val lowerText = text.lowercase().trim()
+
+        val conversationalKeywords = listOf(
+            "what's your name", "what is your name", "who are you",
+            "hello", "hi", "hey", "greetings",
+            "how are you", "what can you do", "help",
+            "what's up", "good morning", "good evening",
+            "nice to meet you", "tell me about yourself",
+            "my name is", "i'm", "i am", "remember",
+            "do you remember", "what's my name", "what is my name"
+        )
+
+        val movementKeywords = listOf(
+            "move", "go", "turn", "forward", "backward", "back",
+            "left", "right", "stop", "ahead", "straight"
+        )
+
+        // Check for conversational keywords first
+        if (conversationalKeywords.any { keyword -> lowerText.contains(keyword) }) {
+            return true
+        }
+
+        // Check if it contains movement keywords
+        if (movementKeywords.any { keyword -> lowerText.contains(keyword) }) {
+            return false
+        }
+
+        // Default to conversational for questions
+        return lowerText.contains("?") || lowerText.startsWith("what") || lowerText.startsWith("who")
+    }
+
+    /**
+     * Get conversation memory for external access
+     */
+    fun getConversationMemory(): ConversationMemory {
+        return conversationMemory
+    }
+
+    /**
+     * Clear conversation memory
+     */
+    fun clearMemory() {
+        conversationMemory.clear()
+    }
+}
+
+// Sealed class for unified response handling
+sealed class AiResponse {
+    data class Actions(val actions: List<RobotAction>) : AiResponse()
+    data class Conversation(val message: String) : AiResponse()
 }
 
 data class RobotAction(
