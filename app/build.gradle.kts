@@ -1,3 +1,7 @@
+@file:Suppress("DEPRECATION")
+
+import com.android.build.api.dsl.Packaging
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -51,7 +55,7 @@ android {
     }
 
     // Add packaging options to avoid conflicts
-    packagingOptions {
+    fun Packaging.() {
         excludes += "/META-INF/{AL2.0,LGPL2.1}"
         excludes += "META-INF/DEPENDENCIES"
         excludes += "META-INF/LICENSE"
@@ -104,4 +108,7 @@ dependencies {
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2025.05.01"))
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    //json dependencies
+    implementation("org.json:json:20240303")
+
 }

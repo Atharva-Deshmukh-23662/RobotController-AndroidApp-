@@ -7,6 +7,7 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothSocket
 import android.content.Context
 import android.content.pm.PackageManager
+import android.util.Log
 import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -83,21 +84,25 @@ class BluetoothManager(
 
     fun send(message: String) {
         try {
+            Log.d("BluetoothManager", "Sending message: $message")
             if (ContextCompat.checkSelfPermission(
                     context, Manifest.permission.BLUETOOTH_CONNECT
-                ) != PackageManager.PERMISSION_GRANTED
-            ) {
-                // Permission missing—inform caller
+                ) != PackageManager.PERMISSION_GRANTED) {
+                Log.e("BluetoothManager", "Missing BLUETOOTH_CONNECT permission")
                 return
             }
-            socket?.outputStream?.write(message.toByteArray())
-        } catch (e: SecurityException) {
-            // Handle user revoking permission mid-session
-            e.printStackTrace()
-        } catch (e: IOException) {
-            e.printStackTrace()
+            val os = socket?.outputStream
+            if (os == null) {
+                Log.e("BluetoothManager", "Socket outputStream is null")
+            } else {
+                os.write(message.toByteArray())
+                Log.d("BluetoothManager", "Message sent successfully")
+            }
+        } catch (e: Exception) {
+            Log.e("BluetoothManager", "Send failed", e)
         }
     }
+
 
     fun close() {
         try {
