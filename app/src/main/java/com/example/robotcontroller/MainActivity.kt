@@ -22,6 +22,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import android.util.Log
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -37,6 +38,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val RECORD_AUDIO_PERMISSION_REQUEST_CODE = 1001
         private const val BLUETOOTH_PERMISSIONS_REQUEST_CODE = 1002
+        private const val TAG = "MainActivity"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -164,13 +166,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Add stop task button listener (you may need to add this button to your layout)
-        // binding.btnStopTask.setOnClickListener {
-        //     if (::taskHandler.isInitialized) {
-        //         taskHandler.cancelCurrentTask()
-        //     }
-        // }
-
         // Movement buttons for manual control
         setupHoldToSend(binding.btnForward, "MOV-FD-#")
         setupHoldToSend(binding.btnBack, "MOV-BD-#")
@@ -190,7 +185,7 @@ class MainActivity : AppCompatActivity() {
                             if (::btMgr.isInitialized) {
                                 btMgr.send(command)
                             }
-                            delay(100) // send every 0.7 sec
+                            delay(100) // send every 0.1 sec
                         }
                     }
                 }
@@ -233,16 +228,19 @@ class MainActivity : AppCompatActivity() {
 
     private fun onSpeech(text: String) {
         Toast.makeText(this, "Heard: $text", Toast.LENGTH_SHORT).show()
+        Log.d(TAG, "Speech input received: $text")
 
         lifecycleScope.launch {
             if (::ai.isInitialized && ::taskHandler.isInitialized) {
-                // Display the command received
                 try {
                     // Get structured actions from AI
                     val actions = ai.interpretToActions(text)
+                    Log.d(TAG, "AI returned ${actions.size} actions")
 
                     if (actions.isNotEmpty()) {
-                        // Display the planned actions
+                        // This is a movement command - execute actions
+                        Log.d(TAG, "Executing movement actions: ${actions.map { it.action }}")
+
                         val actionsText = actions.joinToString(" → ") { action ->
                             when (action.action) {
                                 "go_straight" -> "Forward ${action.params.firstOrNull()}ms"
@@ -282,14 +280,18 @@ class MainActivity : AppCompatActivity() {
                         )
 
                     } else {
-                        // No actions generated, provide conversational response
+                        // This is a conversational query - get AI response
+                        Log.d(TAG, "No actions detected, getting conversational response")
                         val response = ai.interpret(text)
+                        Log.d(TAG, "Conversational AI response: $response")
+
                         runOnUiThread {
-                            binding.geminiResponseText.text = "You: $text\n\nAI: $response"
+                            binding.geminiResponseText.text = "You: $text\n\nRobo: $response"
                         }
                     }
 
                 } catch (e: Exception) {
+                    Log.e(TAG, "Error processing speech input", e)
                     runOnUiThread {
                         binding.geminiResponseText.text = "Error processing command: ${e.message}"
                     }
@@ -297,7 +299,9 @@ class MainActivity : AppCompatActivity() {
             }
 
             // Restart wake word detection
+            delay(500) // Give some time for the response to be displayed
             if (::wake.isInitialized) {
+                Log.d(TAG, "Restarting wake word detection")
                 wake.start()
             }
         }
@@ -309,11 +313,11 @@ class MainActivity : AppCompatActivity() {
     private fun testTaskSequence() {
         if (::taskHandler.isInitialized) {
             val testActions = listOf(
-                RobotAction("go_straight", listOf(2000)),  // Forward 2 seconds
-                RobotAction("turn_left", emptyList()),      // Turn left
-                RobotAction("go_straight", listOf(1000)),   // Forward 1 second
-                RobotAction("turn_right", emptyList()),     // Turn right
-                RobotAction("stop", emptyList())            // Stop
+                RobotAction("go_straight", listOf(2000)), // Forward 2 seconds
+                RobotAction("turn_left", emptyList()), // Turn left
+                RobotAction("go_straight", listOf(1000)), // Forward 1 second
+                RobotAction("turn_right", emptyList()), // Turn right
+                RobotAction("stop", emptyList()) // Stop
             )
 
             taskHandler.executeTaskSequence(testActions)

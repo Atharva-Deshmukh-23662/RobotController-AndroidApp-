@@ -19,7 +19,7 @@ class RobotActions(private val bluetoothManager: BluetoothManager) {
         private const val CMD_BACKWARD = "MOV-BD-#"
         private const val CMD_LEFT = "MOV-LD-#"
         private const val CMD_RIGHT = "MOV-RD-#"
-        private const val CMD_STOP = "STOP-#"
+        private const val CMD_STOP = "MOV-SD-#"
 
         // Default timing for turns (milliseconds)
         private const val DEFAULT_TURN_DURATION = 1000L
