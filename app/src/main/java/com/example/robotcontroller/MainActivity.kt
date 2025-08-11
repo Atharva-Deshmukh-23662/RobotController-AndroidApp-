@@ -33,7 +33,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var ai: AiManager
     private lateinit var taskHandler: TaskHandler
 
-    val YOUR_WAKEWORD_KEY = "YEWpY2uu/ejh97A66zakeL/RP8q3/su52qIU8Xy/BDdQsBgxnw/YkQ=="
+    val YOUR_WAKEWORD_KEY = "I9J2ohbN5LKHHCDY+7VHWvFbAr07qTnqXE5pmUiza0m+0nEXz3CzfA=="
     val YOUR_API_KEY = "AIzaSyDDWp7kM3kLNZehIXpWonZ92IGxa1_I2_E"
 
     companion object {
