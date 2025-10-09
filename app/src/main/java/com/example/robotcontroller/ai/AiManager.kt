@@ -1,9 +1,11 @@
 package com.example.robotcontroller.ai
 
 import android.content.Context
+import android.graphics.Bitmap
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.Content
 import com.google.ai.client.generativeai.type.TextPart
+import com.google.ai.client.generativeai.type.content
 import com.google.ai.client.generativeai.type.generationConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -23,11 +25,11 @@ class AiManager(context: Context, apiKey: String) {
 
     // Single unified model that handles both actions and conversations
     private val unifiedModel = GenerativeModel(
-        modelName = "gemini-2.0-flash-lite",
+        modelName = "gemini-pro-vision",
         apiKey = apiKey,
         systemInstruction = Content(
             role = "system",
-            parts = listOf(TextPart(text = """
+            parts = listOf(TextPart(text = '''
                 You are Robo, an AI assistant controlling a mobile robot. 
                 You understand commands to move: go_straight(ms), go_backward(ms), turn_left(), turn_right(), stop().  
                 Default move duration is 1000ms if unspecified.  
@@ -43,7 +45,7 @@ class AiManager(context: Context, apiKey: String) {
                 Remember conversation context and refer to previous topics when relevant.  (context might be commented out sometime)
                 Keep replies concise, friendly and creative.
 
-            """.trimIndent()))
+            '''.trimIndent()))
         ),
         generationConfig = generationConfig {
             responseMimeType = "application/json"
@@ -53,17 +55,15 @@ class AiManager(context: Context, apiKey: String) {
     /**
      * Single method that handles both actions and conversations
      */
-    suspend fun processInput(text: String): AiResponse = withContext(Dispatchers.IO) {
+    suspend fun processInput(text: String, image: Bitmap? = null): AiResponse = withContext(Dispatchers.IO) {
         Log.d(TAG, "Processing input: $text")
         try {
-            // Build context with conversation history
-//            val context = conversationMemory.getContextString()
-//            val fullPrompt = if (context.isNotEmpty()) {
-//                "$context\nCurrent user input: $text\n\nRespond with appropriate JSON format:"
-//            } else {
-//                text
-//            }
-            val fullPrompt = text
+            val fullPrompt = content {
+                if (image != null) {
+                    image(image)
+                }
+                text(text)
+            }
 
 
             val response = unifiedModel.generateContent(fullPrompt).text ?: ""
@@ -208,7 +208,7 @@ class AiManager(context: Context, apiKey: String) {
         }
 
         // Extract time duration
-        val timeRegex = Regex("""(\d+)\s*(?:sec|second)s?""")
+        val timeRegex = Regex('''(\d+)\s*(?:sec|second)s?''')
         val timeMatch = timeRegex.find(lowerText)
         val duration = timeMatch?.groupValues?.get(1)?.toIntOrNull()?.times(1000) ?: 1000
 

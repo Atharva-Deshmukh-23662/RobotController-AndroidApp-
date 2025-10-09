@@ -14,6 +14,7 @@ import com.example.robotcontroller.ai.AiManager
 import com.example.robotcontroller.ai.AiResponse
 import com.example.robotcontroller.ai.RobotAction
 import com.example.robotcontroller.bluetooth.BluetoothManager
+import com.example.robotcontroller.camera.CameraManager
 import com.example.robotcontroller.voice.WakeWordDetector
 import com.example.robotcontroller.voice.SpeechRecognizerManager
 import com.example.robotcontroller.tasks.TaskHandler
@@ -21,6 +22,7 @@ import android.view.MotionEvent
 import android.view.View
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import android.util.Log
@@ -32,6 +34,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var speech: SpeechRecognizerManager
     private lateinit var ai: AiManager
     private lateinit var taskHandler: TaskHandler
+    private lateinit var cameraManager: CameraManager
 
     val YOUR_WAKEWORD_KEY = "I9J2ohbN5LKHHCDY+7VHWvFbAr07qTnqXE5pmUiza0m+0nEXz3CzfA=="
     val YOUR_API_KEY = "AIzaSyDDWp7kM3kLNZehIXpWonZ92IGxa1_I2_E"
@@ -39,6 +42,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val RECORD_AUDIO_PERMISSION_REQUEST_CODE = 1001
         private const val BLUETOOTH_PERMISSIONS_REQUEST_CODE = 1002
+        private const val CAMERA_PERMISSION_REQUEST_CODE = 1003
         private const val TAG = "MainActivity"
     }
 
@@ -61,9 +65,11 @@ class MainActivity : AppCompatActivity() {
     private fun checkPermissions(): Boolean {
         val recordAudioPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
         val bluetoothConnectPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT)
+        val cameraPermission = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
 
         return recordAudioPermission == PackageManager.PERMISSION_GRANTED &&
-                bluetoothConnectPermission == PackageManager.PERMISSION_GRANTED
+                bluetoothConnectPermission == PackageManager.PERMISSION_GRANTED &&
+                cameraPermission == PackageManager.PERMISSION_GRANTED
     }
 
     private fun requestPermissions() {
@@ -77,11 +83,15 @@ class MainActivity : AppCompatActivity() {
             permissionsToRequest.add(Manifest.permission.BLUETOOTH_CONNECT)
         }
 
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            permissionsToRequest.add(Manifest.permission.CAMERA)
+        }
+
         if (permissionsToRequest.isNotEmpty()) {
             ActivityCompat.requestPermissions(
                 this,
                 permissionsToRequest.toTypedArray(),
-                RECORD_AUDIO_PERMISSION_REQUEST_CODE
+                CAMERA_PERMISSION_REQUEST_CODE
             )
         }
     }
@@ -94,7 +104,7 @@ class MainActivity : AppCompatActivity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
 
         when (requestCode) {
-            RECORD_AUDIO_PERMISSION_REQUEST_CODE -> {
+            RECORD_AUDIO_PERMISSION_REQUEST_CODE, CAMERA_PERMISSION_REQUEST_CODE -> {
                 var allGranted = true
                 for (result in grantResults) {
                     if (result != PackageManager.PERMISSION_GRANTED) {
@@ -104,10 +114,10 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 if (allGranted) {
-                    Toast.makeText(this, "Permissions granted! Initializing voice recognition...", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Permissions granted! Initializing...", Toast.LENGTH_SHORT).show()
                     initializeComponents()
                 } else {
-                    Toast.makeText(this, "Permissions denied. Voice recognition will not work.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "Permissions denied. Some features will not work.", Toast.LENGTH_LONG).show()
                     initializeComponentsWithoutVoice()
                 }
             }
@@ -121,15 +131,17 @@ class MainActivity : AppCompatActivity() {
             speech = SpeechRecognizerManager(this) { onSpeech(it) }
             ai = AiManager(this, YOUR_API_KEY)
             taskHandler = TaskHandler(this, btMgr, lifecycleScope)
+            cameraManager = CameraManager(this, binding.surfaceView)
 
             wake.initialize()
             wake.start()
+            cameraManager.openCamera()
 
-            Toast.makeText(this, "Voice recognition initialized successfully!", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "All components initialized successfully!", Toast.LENGTH_SHORT).show()
             Log.d(TAG, "All components initialized successfully")
 
         } catch (e: Exception) {
-            Toast.makeText(this, "Error initializing voice components: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Error initializing components: ${e.message}", Toast.LENGTH_LONG).show()
             Log.e(TAG, "Error initializing components", e)
         }
     }
@@ -139,9 +151,12 @@ class MainActivity : AppCompatActivity() {
             btMgr = BluetoothManager(this) { /* handle FPGA messages if needed */ }
             ai = AiManager(this, YOUR_API_KEY)
             taskHandler = TaskHandler(this, btMgr, lifecycleScope)
+            cameraManager = CameraManager(this, binding.surfaceView)
 
             binding.btnSpeak.isEnabled = false
             binding.btnSpeak.alpha = 0.5f
+
+            cameraManager.openCamera()
 
             Toast.makeText(this, "Initialized without voice features", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
@@ -232,8 +247,14 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             if (::ai.isInitialized && ::taskHandler.isInitialized) {
                 try {
+                    var image: android.graphics.Bitmap? = null
+                    if (::cameraManager.isInitialized) {
+                        cameraManager.frames.collectLatest { 
+                            image = it
+                        }
+                    }
                     // Single AI call that handles both actions and conversations
-                    val aiResponse = ai.processInput(text)
+                    val aiResponse = ai.processInput(text, image)
                     Log.d(TAG, "AI response type: ${aiResponse::class.simpleName}")
 
                     when (aiResponse) {
@@ -353,6 +374,9 @@ class MainActivity : AppCompatActivity() {
         }
         if (::taskHandler.isInitialized) {
             taskHandler.cancelCurrentTask()
+        }
+        if (::cameraManager.isInitialized) {
+            cameraManager.closeCamera()
         }
     }
 }
