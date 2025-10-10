@@ -149,7 +149,24 @@ class MainActivity : AppCompatActivity() {
             val aiResponse = ai.processInput(text)
             when (aiResponse) {
                 is AiResponse.Actions -> {
-                    taskHandler.executeTaskSequence(aiResponse.actions, {}, { _, _, _ -> }, {}, {})
+                    taskHandler.executeTaskSequence(
+                        aiResponse.actions,
+                        onProgress = { current, total, action ->
+                            runOnUiThread {
+                                binding.geminiResponseText.text = "Executing action $current of $total: $action"
+                            }
+                        },
+                        onComplete = {
+                            runOnUiThread {
+                                binding.geminiResponseText.text = "All actions completed!"
+                            }
+                        },
+                        onError = {
+                            runOnUiThread {
+                                binding.geminiResponseText.text = "An error occurred during execution."
+                            }
+                        }
+                    )
                     runOnUiThread { binding.geminiResponseText.text = "Executing actions..." }
                 }
                 is AiResponse.Conversation -> {
