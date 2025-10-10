@@ -5,6 +5,8 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowInsets
+import android.view.WindowManager
 import android.view.animation.Animation
 import android.view.animation.ScaleAnimation
 import android.widget.Toast
@@ -33,7 +35,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var taskHandler: TaskHandler
 
     private val YOUR_WAKEWORD_KEY = "I9J2ohbN5LKHHCDY+7VHWvFbAr07qTnqXE5pmUiza0m+0nEXz3CzfA=="
-    private val YOUR_API_KEY = "AIzaSyDDWp7kM3kLNZehIXpWonZ92IGxa1_I2_E"
+    private val YOUR_API_KEY = "AIzaSyC45yM8KxDGP7fvJWWI2DlItbuZu-O_75c"
 
     companion object {
         private const val RECORD_AUDIO_PERMISSION_REQUEST_CODE = 1001
@@ -43,6 +45,10 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Make the app full-screen
+        window.insetsController?.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         if (checkPermissions()) {
             initializeComponents()
