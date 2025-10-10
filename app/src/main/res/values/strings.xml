@@ -1,3 +1,12 @@
 <resources>
     <string name="app_name">RobotController</string>
+    <string name="menu_icon_description">Menu Icon</string>
+    <string name="heard_text_placeholder">I'm listening...</string>
+    <string name="ai_response_placeholder">AI responses will appear here...</string>
+    <string name="connect_button_text">Connect to HC-05</string>
+    <string name="forward_button_text">Forward</string>
+    <string name="back_button_text">Back</string>
+    <string name="left_button_text">Left</string>
+    <string name="right_button_text">Right</string>
+    <string name="speak_button_text">Speak</string>
 </resources>
