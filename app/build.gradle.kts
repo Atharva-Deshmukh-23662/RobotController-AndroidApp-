@@ -111,4 +111,8 @@ dependencies {
     //json dependencies
     implementation("org.json:json:20240303")
 
+    // Add the CameraX libraries
+    implementation(libs.bundles.camerax)
+
+
 }

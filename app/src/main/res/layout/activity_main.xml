@@ -1,84 +1,122 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
-    android:orientation="vertical"
-    android:padding="16dp"
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@android:color/black"
+    tools:context=".MainActivity">
 
-    <Button
-        android:id="@+id/btnConnect"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Connect to HC-05"
-        android:layout_marginTop="15dp"/>
-
-    <LinearLayout
-        android:orientation="horizontal"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="20dp"
-        >
-
-        <Button android:id="@+id/btnForward"
-            android:text="Forward"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:background="@drawable/rounded_background"
-            android:layout_height="wrap_content"
-            android:layout_margin="5dp"/>
-
-        <Button android:id="@+id/btnBack"
-            android:text="Back"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:background="@drawable/rounded_background"
-            android:layout_height="wrap_content"
-            android:layout_margin="5dp"/>
-    </LinearLayout>
-
-    <LinearLayout
-        android:orientation="horizontal"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp">
-
-        <Button android:id="@+id/btnLeft"
-            android:text="Left"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:background="@drawable/rounded_background"
-            android:layout_height="wrap_content"
-            android:layout_margin="5dp"/>
-
-        <Button android:id="@+id/btnRight"
-            android:text="Right"
-            android:layout_width="0dp"
-            android:layout_weight="1"
-            android:background="@drawable/rounded_background"
-            android:layout_height="wrap_content"
-            android:layout_margin="5dp"/>
-    </LinearLayout>
-
-    <Button
-        android:id="@+id/btnSpeak"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
+    <ImageView
+        android:id="@+id/menu_icon"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_alignParentStart="true"
+        android:layout_alignParentTop="true"
+        android:layout_marginStart="16dp"
         android:layout_marginTop="16dp"
-        android:background="@drawable/rounded_background"
-        android:text="🎙️ Speak" />
-    <TextView
-        android:id="@+id/geminiResponseText"
+        android:src="@drawable/ic_menu"
+        android:contentDescription="@string/menu_icon_description" />
+
+    <LinearLayout
+        android:id="@+id/main_content_layout"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_margin="16dp"
-        android:padding="12dp"
-        android:background="@drawable/rounded_textview_background"
-        android:text="AI responses will appear here..."
-        android:textSize="14sp"
-        android:maxLines="10"
-        android:scrollbars="vertical" />
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center">
 
+        <LinearLayout
+            android:id="@+id/eyes_layout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center">
 
-</LinearLayout>
+            <ImageView
+                android:id="@+id/left_eye"
+                android:layout_width="150dp"
+                android:layout_height="100dp"
+                android:src="@drawable/oval_eye"
+                android:layout_marginEnd="16dp" />
+
+            <ImageView
+                android:id="@+id/right_eye"
+                android:layout_width="150dp"
+                android:layout_height="100dp"
+                android:src="@drawable/oval_eye"
+                android:layout_marginStart="16dp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/heard_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="32dp"
+            android:gravity="center"
+            android:textColor="@android:color/white"
+            android:textSize="18sp"
+            android:text="@string/heard_text_placeholder" />
+
+        <TextView
+            android:id="@+id/geminiResponseText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="center"
+            android:textColor="@android:color/white"
+            android:textSize="18sp"
+            android:text="@string/ai_response_placeholder" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/menu_layout"
+        android:layout_width="200dp"
+        android:layout_height="match_parent"
+        android:layout_alignParentStart="true"
+        android:background="@android:color/darker_gray"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:visibility="gone">
+
+        <Button
+            android:id="@+id/btnConnect"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/connect_button_text" />
+
+        <Button
+            android:id="@+id/btnForward"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/forward_button_text" />
+
+        <Button
+            android:id="@+id/btnBack"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/back_button_text" />
+
+        <Button
+            android:id="@+id/btnLeft"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/left_button_text" />
+
+        <Button
+            android:id="@+id/btnRight"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/right_button_text" />
+
+        <Button
+            android:id="@+id/btnSpeak"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/speak_button_text" />
+    </LinearLayout>
+
+</RelativeLayout>
