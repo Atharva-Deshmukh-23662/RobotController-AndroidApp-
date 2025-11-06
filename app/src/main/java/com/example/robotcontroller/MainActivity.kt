@@ -17,6 +17,7 @@ import androidx.lifecycle.lifecycleScope
 import com.example.robotcontroller.ai.AiManager
 import com.example.robotcontroller.ai.AiResponse
 import com.example.robotcontroller.bluetooth.BluetoothManager
+import com.example.robotcontroller.camera.CameraManager
 import com.example.robotcontroller.databinding.ActivityMainBinding
 import com.example.robotcontroller.tasks.TaskHandler
 import com.example.robotcontroller.voice.SpeechRecognizerManager
@@ -33,6 +34,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var speech: SpeechRecognizerManager
     private lateinit var ai: AiManager
     private lateinit var taskHandler: TaskHandler
+    private lateinit var cameraManager: CameraManager
+
 
     private val YOUR_WAKEWORD_KEY = "I9J2ohbN5LKHHCDY+7VHWvFbAr07qTnqXE5pmUiza0m+0nEXz3CzfA=="
     private val YOUR_API_KEY = "AIzaSyC45yM8KxDGP7fvJWWI2DlItbuZu-O_75c"
@@ -201,4 +204,42 @@ class MainActivity : AppCompatActivity() {
         speech.destroy()
         taskHandler.cancelCurrentTask()
     }
+
+    private fun handleUserInput(text: String) {
+        val lowerCaseText = text.lowercase().trim()
+
+        // --- CHANGE 4: Add logic to handle the "what can you see" command ---
+        if (lowerCaseText.contains("what") && lowerCaseText.contains("see")) {
+            // Special command to capture and describe a photo
+            lifecycleScope.launch {
+                try {
+                    // 1. Capture the image
+                    val imageBitmap = cameraManager.takePicture() // Assumes takePicture returns a Bitmap
+
+                    // 2. Send to AI Manager with the image and prompt
+                    // Show a "thinking" or "processing" state in your UI here
+                    val prompt = "Describe what you see in this image."
+                    val aiResponse = ai.processInput(prompt, imageBitmap)
+
+                    // 3. Handle the response (e.g., display the text, speak it out)
+                    if (aiResponse is AiResponse.Conversation) {
+//                        // Update your UI with aiResponse.message
+//                        Log.d("MainActivity", "Gemini says: ${aiResponse.message}")
+                        // e.g., speakOut(aiResponse.message)
+                    }
+
+                } catch (e: Exception) {
+//                    Log.e("MainActivity", "Failed to capture and process image", e)
+                    // Handle the error (e.g., show a toast message)
+                }
+            }
+        } else {
+            // This is the existing logic for all other commands
+            lifecycleScope.launch {
+                val aiResponse = ai.processInput(text) // Call without image
+                // Handle the response as you did before...
+            }
+        }
+    }
+
 }

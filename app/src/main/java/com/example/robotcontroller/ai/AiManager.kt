@@ -1,16 +1,17 @@
 package com.example.robotcontroller.ai
 
 import android.content.Context
+import android.graphics.Bitmap // Import Bitmap
+import android.util.Log
 import com.google.ai.client.generativeai.GenerativeModel
 import com.google.ai.client.generativeai.type.Content
 import com.google.ai.client.generativeai.type.TextPart
 import com.google.ai.client.generativeai.type.generationConfig
+import com.google.ai.client.generativeai.type.content // Import the content builder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
-import android.util.Log
 
 class AiManager(context: Context, apiKey: String) {
 
@@ -53,55 +54,58 @@ class AiManager(context: Context, apiKey: String) {
     /**
      * Single method that handles both actions and conversations
      */
-    suspend fun processInput(text: String): AiResponse = withContext(Dispatchers.IO) {
-        Log.d(TAG, "Processing input: $text")
-        try {
-            // Build context with conversation history
-//            val context = conversationMemory.getContextString()
-//            val fullPrompt = if (context.isNotEmpty()) {
-//                "$context\nCurrent user input: $text\n\nRespond with appropriate JSON format:"
-//            } else {
-//                text
-//            }
-            val fullPrompt = text
-
-
-            val response = unifiedModel.generateContent(fullPrompt).text ?: ""
-            Log.d(TAG, "AI Response: $response")
-
-            val aiResponse = parseUnifiedResponse(response)
-
-            // Store in memory based on response type
-            when (aiResponse) {
-                is AiResponse.Actions -> {
-                    val actionSummary = aiResponse.actions.joinToString(", ") { "${it.action}(${it.params.joinToString()})" }
-                    conversationMemory.addConversation(text, actionSummary, true)
+    suspend fun processInput(text: String, image: Bitmap? = null): AiResponse =
+        withContext(Dispatchers.IO) {
+            Log.d(TAG, "Processing input: $text, Image provided: ${image != null}")
+            try {
+                // Build a multimodal prompt with text and an optional image
+                val fullPrompt = content {
+                    if (image != null) {
+                        image(image) // Add the image to the prompt
+                    }
+                    text(text) // Add the text part of the prompt
                 }
-                is AiResponse.Conversation -> {
-                    conversationMemory.addConversation(text, aiResponse.message, false)
+
+                val response = unifiedModel.generateContent(fullPrompt).text ?: ""
+                Log.d(TAG, "AI Response: $response")
+
+                val aiResponse = parseUnifiedResponse(response)
+
+                // Store in memory based on response type
+                when (aiResponse) {
+                    is AiResponse.Actions -> {
+                        val actionSummary =
+                            aiResponse.actions.joinToString(", ") { "${it.action}(${it.params.joinToString()})" }
+                        conversationMemory.addConversation(text, actionSummary, true)
+                    }
+
+                    is AiResponse.Conversation -> {
+                        conversationMemory.addConversation(text, aiResponse.message, false)
+                    }
                 }
+
+                aiResponse
+
+            } catch (e: Exception) {
+                Log.e(TAG, "AI processing failed, using fallback", e)
+                val fallbackResponse = generateFallbackResponse(text)
+
+                // Store fallback in memory
+                when (fallbackResponse) {
+                    is AiResponse.Actions -> {
+                        val actionSummary =
+                            fallbackResponse.actions.joinToString(", ") { "${it.action}(${it.params.joinToString()})" }
+                        conversationMemory.addConversation(text, actionSummary, true)
+                    }
+
+                    is AiResponse.Conversation -> {
+                        conversationMemory.addConversation(text, fallbackResponse.message, false)
+                    }
+                }
+
+                fallbackResponse
             }
-
-            aiResponse
-
-        } catch (e: Exception) {
-            Log.e(TAG, "AI processing failed, using fallback", e)
-            val fallbackResponse = generateFallbackResponse(text)
-
-            // Store fallback in memory
-            when (fallbackResponse) {
-                is AiResponse.Actions -> {
-                    val actionSummary = fallbackResponse.actions.joinToString(", ") { "${it.action}(${it.params.joinToString()})" }
-                    conversationMemory.addConversation(text, actionSummary, true)
-                }
-                is AiResponse.Conversation -> {
-                    conversationMemory.addConversation(text, fallbackResponse.message, false)
-                }
-            }
-
-            fallbackResponse
         }
-    }
 
     private fun parseUnifiedResponse(jsonString: String): AiResponse {
         try {
@@ -130,10 +134,12 @@ class AiManager(context: Context, apiKey: String) {
 
                     AiResponse.Actions(actions)
                 }
+
                 "conversation" -> {
                     val message = jsonObject.getString("message")
                     AiResponse.Conversation(message)
                 }
+
                 else -> {
                     Log.w(TAG, "Unknown response type: $type")
                     AiResponse.Conversation("I'm not sure how to respond to that.")
@@ -141,6 +147,12 @@ class AiManager(context: Context, apiKey: String) {
             }
         } catch (e: JSONException) {
             Log.e(TAG, "JSON parsing failed: $jsonString", e)
+            // --- CHANGE 3: Handle plain text fallback from vision model ---
+            // If the model returns plain text instead of JSON (common for descriptions)
+            // wrap it in a conversational response.
+            if (!jsonString.trim().startsWith("{")) {
+                return AiResponse.Conversation(jsonString)
+            }
             return AiResponse.Conversation("I heard '$jsonString' but couldn't understand it properly.")
         }
     }
