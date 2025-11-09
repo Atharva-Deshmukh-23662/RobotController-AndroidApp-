@@ -70,7 +70,11 @@ class BluetoothManager(
                     return@Thread
                 }
                 socket = device.createRfcommSocketToServiceRecord(uuid)
-                adapter?.cancelDiscovery()
+                if (ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN)
+                    == PackageManager.PERMISSION_GRANTED
+                ) {
+                    adapter?.cancelDiscovery()
+                }
                 socket!!.connect()
             } catch (e: SecurityException) {
                 // The user revoked permission at runtime; notify or recover

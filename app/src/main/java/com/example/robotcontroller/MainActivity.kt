@@ -33,12 +33,26 @@ class MainActivity : AppCompatActivity() {
     private lateinit var speech: SpeechRecognizerManager
     private lateinit var ai: AiManager
     private lateinit var taskHandler: TaskHandler
+    private val bluetoothPermissions = arrayOf(
+        Manifest.permission.BLUETOOTH_CONNECT,
+        Manifest.permission.BLUETOOTH_SCAN,
+        Manifest.permission.ACCESS_FINE_LOCATION
+    )
+    private val REQUEST_BLUETOOTH_PERMISSIONS = 1
 
     private val YOUR_WAKEWORD_KEY = "I9J2ohbN5LKHHCDY+7VHWvFbAr07qTnqXE5pmUiza0m+0nEXz3CzfA=="
     private val YOUR_API_KEY = "AIzaSyC45yM8KxDGP7fvJWWI2DlItbuZu-O_75c"
 
     companion object {
         private const val RECORD_AUDIO_PERMISSION_REQUEST_CODE = 1001
+    }
+    private fun checkAndRequestBluetoothPermissions() {
+        val missing = bluetoothPermissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, missing.toTypedArray(), REQUEST_BLUETOOTH_PERMISSIONS)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -49,6 +63,7 @@ class MainActivity : AppCompatActivity() {
         // Make the app full-screen
         window.insetsController?.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        checkAndRequestBluetoothPermissions()
 
         if (checkPermissions()) {
             initializeComponents()
