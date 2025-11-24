@@ -21,10 +21,12 @@ import com.example.robotcontroller.databinding.ActivityMainBinding
 import com.example.robotcontroller.tasks.TaskHandler
 import com.example.robotcontroller.voice.SpeechRecognizerManager
 import com.example.robotcontroller.voice.WakeWordDetector
+import com.example.robotcontroller.TTS.TtsManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import android.util.Log
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -33,6 +35,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var speech: SpeechRecognizerManager
     private lateinit var ai: AiManager
     private lateinit var taskHandler: TaskHandler
+
+    private lateinit var ttsManager: TtsManager
+    private var isTtsEnabled = true  // Toggle for TTS
+
     private val bluetoothPermissions = arrayOf(
         Manifest.permission.BLUETOOTH_CONNECT,
         Manifest.permission.BLUETOOTH_SCAN,
@@ -99,7 +105,7 @@ class MainActivity : AppCompatActivity() {
         speech = SpeechRecognizerManager(this, this::onSpeech)
         ai = AiManager(this, YOUR_API_KEY)
         taskHandler = TaskHandler(this, btMgr, lifecycleScope)
-
+        initializeTts()
         wake.initialize()
         wake.start()
     }
@@ -169,12 +175,14 @@ class MainActivity : AppCompatActivity() {
 
             val aiResponse = ai.processInput(text)
             when (aiResponse) {
+
                 is AiResponse.Actions -> {
                     taskHandler.executeTaskSequence(
                         aiResponse.actions,
                         onProgress = { current, total, action ->
                             runOnUiThread {
-                                binding.geminiResponseText.text = "Executing action $current of $total: $action"
+                                binding.geminiResponseText.text =
+                                    "Executing action $current of $total: $action"
                             }
                         },
                         onComplete = {
@@ -190,14 +198,34 @@ class MainActivity : AppCompatActivity() {
                     )
                     runOnUiThread { binding.geminiResponseText.text = "Executing actions..." }
                 }
+
                 is AiResponse.Conversation -> {
-                    runOnUiThread { binding.geminiResponseText.text = aiResponse.message }
+                    val msg = aiResponse.message
+                    runOnUiThread { binding.geminiResponseText.text = msg }
+
+                    //  SPEAK AI RESPONSE
+                    if (isTtsEnabled) ttsManager.speakAiResponse(msg)
                 }
             }
-
             delay(1000)
             wake.start()
         }
+    }
+
+    private fun initializeTts() {
+        ttsManager = TtsManager(this)
+
+        ttsManager.setOnInitCallback { success ->
+            if (success) {
+                Log.d("MainActivity", "TTS ready")
+                // Optionally announce readiness
+                ttsManager.speak("Robot controller ready")
+            } else {
+                Log.e("MainActivity", "TTS initialization failed")
+                Toast.makeText(this, "Voice feedback unavailable", Toast.LENGTH_SHORT).show()
+            }
+        }
+
     }
 
     private fun animateListening(isListening: Boolean) {
@@ -215,5 +243,6 @@ class MainActivity : AppCompatActivity() {
         btMgr.close()
         speech.destroy()
         taskHandler.cancelCurrentTask()
+        ttsManager.shutdown()
     }
 }
